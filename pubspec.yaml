@@ -105,8 +105,9 @@ dependencies:
   cupertino_icons: ^1.0.8
 
   # → ย้ายสองตัวนี้มาไว้ใต้ dependencies
-  firebase_core: ^3.6.0
+  firebase_core: ^3.15.2
   firebase_auth: ^5.3.1
+  firebase_storage: ^12.4.10
 
 dev_dependencies:
   flutter_test:
