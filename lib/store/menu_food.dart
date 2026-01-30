@@ -23,7 +23,7 @@ class StoreDetailPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: Text(name)),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: menusRef.orderBy('name').snapshots(), // เรียงชื่อเมนู (มีฟิลด์ name ครบ)
+        stream: menusRef.orderBy('name').snapshots(), // เรียงชื่อเมนู (มีฟิลด์ name )
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             return Center(child: Text('เกิดข้อผิดพลาด: ${snapshot.error}'));

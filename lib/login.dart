@@ -1,31 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'firebase_options.dart';
-import 'home.dart';          // สำหรับลูกค้า
-import 'store.dart';   // หน้าหลักของร้านค้า
+import 'package:firebase_storage/firebase_storage.dart'; // ⬅️ เพิ่ม
+
+import 'home.dart';            // member ลูกค้า
+import 'store/store.dart';     // store ร้านค้า
+import 'store/rider.dart';     // rider คนส่ง
 import 'register.dart';
-
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-  runApp(const MyApp());
-}
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Login Page',
-      debugShowCheckedModeBanner: false,
-      home: const LoginPage(),
-    );
-  }
-}
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -35,84 +16,184 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
-  final _emailCtl = TextEditingController();
-  final _passCtl = TextEditingController();
+
+  final _phoneCtl = TextEditingController();
+  final _otpCtl = TextEditingController();
+
   bool _loading = false;
+  bool _codeSent = false;
+  String? _verificationId;
+
+  // ====== สำหรับโลโก้จาก Firebase Storage ======
+  String? _logoUrl;
+  bool _logoLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLogo();
+  }
+
+  Future<void> _loadLogo() async {
+    try {
+      // path: logos/login.png
+      final ref = FirebaseStorage.instance.ref().child('logos/logo_login.png');
+      final url = await ref.getDownloadURL();
+      if (!mounted) return;
+      setState(() {
+        _logoUrl = url;
+        _logoLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      _logoLoading = false;
+      debugPrint('load logo error: $e');
+    }
+  }
 
   @override
   void dispose() {
-    _emailCtl.dispose();
-    _passCtl.dispose();
+    _phoneCtl.dispose();
+    _otpCtl.dispose();
     super.dispose();
   }
 
-  Future<void> _login() async {
-  if (!_formKey.currentState!.validate()) return;
-  setState(() => _loading = true);
-  try {
-    final cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
-      email: _emailCtl.text.trim(),
-      password: _passCtl.text,
-    );
-    final uid = cred.user!.uid;
-
-    // 1) ถ้าโปรเจ็กต์ของคุณบางร้านใช้ docId=uid จะเช็คแบบนี้ก่อน (เร็วสุด)
-    final docById = await FirebaseFirestore.instance
-        .collection('stores')
-        .doc(uid)
-        .get();
-
-    bool isStore = false;
-
-    if (docById.exists &&
-        (docById.data()?['role']?.toString().toLowerCase() == 'store')) {
-      isStore = true;
-    } else {
-      // 2) โครงที่คุณใช้อยู่: docId สุ่ม -> query ด้วย ownerUid + role
-      final q = await FirebaseFirestore.instance
-          .collection('stores')
-          .where('ownerUid', isEqualTo: uid)
-          .where('role', isEqualTo: 'store')
-          .limit(1)
-          .get();
-
-      isStore = q.docs.isNotEmpty;
+  /// แปลงเบอร์ 0812345678 → +66812345678
+  String _formatPhone(String raw) {
+    String s = raw.trim();
+    if (s.isEmpty) return s;
+    if (s.startsWith('+')) return s;
+    if (s.startsWith('0')) {
+      return '+66${s.substring(1)}';
     }
+    return '+66$s';
+  }
+
+  Future<void> _sendOtp() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    final phone = _formatPhone(_phoneCtl.text);
+
+    setState(() => _loading = true);
+    try {
+      await FirebaseAuth.instance.verifyPhoneNumber(
+        phoneNumber: phone,
+        timeout: const Duration(seconds: 60),
+        verificationCompleted: (PhoneAuthCredential credential) async {
+          final cred =
+              await FirebaseAuth.instance.signInWithCredential(credential);
+          await _afterLogin(cred.user!);
+        },
+        verificationFailed: (FirebaseAuthException e) {
+          _showSnack(_friendlyAuthMessage(e));
+        },
+        codeSent: (String verificationId, int? resendToken) {
+          setState(() {
+            _verificationId = verificationId;
+            _codeSent = true;
+          });
+          _showSnack('ส่งรหัส OTP แล้ว กรุณากรอกที่ด้านล่าง');
+        },
+        codeAutoRetrievalTimeout: (String verificationId) {
+          _verificationId = verificationId;
+        },
+      );
+    } on FirebaseAuthException catch (e) {
+      _showSnack(_friendlyAuthMessage(e));
+    } catch (e) {
+      _showSnack('เกิดข้อผิดพลาด: $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _verifyOtpAndLogin() async {
+    if (_verificationId == null) {
+      _showSnack('ยังไม่ได้ส่งรหัส OTP');
+      return;
+    }
+    if (_otpCtl.text.trim().length < 4) {
+      _showSnack('กรุณากรอกรหัส OTP');
+      return;
+    }
+
+    setState(() => _loading = true);
+    try {
+      final credential = PhoneAuthProvider.credential(
+        verificationId: _verificationId!,
+        smsCode: _otpCtl.text.trim(),
+      );
+
+      final cred =
+          await FirebaseAuth.instance.signInWithCredential(credential);
+
+      await _afterLogin(cred.user!);
+    } on FirebaseAuthException catch (e) {
+      _showSnack(_friendlyAuthMessage(e));
+    } catch (e) {
+      _showSnack('เกิดข้อผิดพลาด: $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  // ================================
+  // ใช้ userId (uid) แยก role แล้วแยกหน้า
+  // ================================
+  Future<void> _afterLogin(User user) async {
+    final uid = user.uid; // = userId ที่เราเก็บไว้ตอน register
+
+    final snap =
+        await FirebaseFirestore.instance.collection('users').doc(uid).get();
+
+    if (!snap.exists) {
+      _showSnack('ยังไม่พบข้อมูลผู้ใช้ใน users/$uid');
+      return;
+    }
+
+    final data = snap.data()!;
+    final role = (data['role'] ?? 'member').toString().toLowerCase();
 
     if (!mounted) return;
-    if (isStore) {
-      // 🔸 ร้านค้า
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const StoreHomePage()),
-      );
-    } else {
-      // 🔹 ลูกค้า
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const HomePage()),
-      );
+
+    switch (role) {
+      case 'store':
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const StoreHomePage()),
+        );
+        break;
+
+      case 'rider':
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => RiderHomePage(riderId: uid),
+          ),
+        );
+        break;  
+
+
+      case 'member':
+      default:
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const HomePage()),
+        );
+        break;
     }
-  } on FirebaseAuthException catch (e) {
-    _showSnack(_friendlyAuthMessage(e));
-  } catch (e) {
-    _showSnack('เกิดข้อผิดพลาด: $e');
-  } finally {
-    if (mounted) setState(() => _loading = false);
   }
-}
-
-
 
   String _friendlyAuthMessage(FirebaseAuthException e) {
     switch (e.code) {
-      case 'invalid-email':
-        return 'อีเมลไม่ถูกต้อง';
-      case 'user-disabled':
-        return 'บัญชีถูกปิดใช้งาน';
-      case 'user-not-found':
-      case 'wrong-password':
-        return 'อีเมลหรือรหัสผ่านไม่ถูกต้อง';
+      case 'invalid-phone-number':
+        return 'เบอร์โทรศัพท์ไม่ถูกต้อง';
+      case 'missing-phone-number':
+        return 'กรุณากรอกเบอร์โทรศัพท์';
+      case 'invalid-verification-code':
+        return 'รหัส OTP ไม่ถูกต้อง';
+      case 'session-expired':
+        return 'รหัส OTP หมดอายุ กรุณาขอใหม่';
       case 'too-many-requests':
         return 'พยายามบ่อยเกินไป ลองใหม่ภายหลัง';
       default:
@@ -144,69 +225,112 @@ class _LoginPageState extends State<LoginPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const SizedBox(height: 8),
-                  const Text("อีเมล"),
+
+                  // ====== แสดงโลโก้จาก Firebase Storage ======
+                  if (_logoLoading)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 16.0),
+                      child: SizedBox(
+                        height: 80,
+                        child: Center(
+                          child: CircularProgressIndicator(),
+                        ),
+                      ),
+                    )
+                  else if (_logoUrl != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 16.0),
+                      child: Image.network(
+                        _logoUrl!,
+                        height: 420,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+
+                  const Text("เบอร์โทรศัพท์"),
                   const SizedBox(height: 5),
                   TextFormField(
-                    controller: _emailCtl,
-                    keyboardType: TextInputType.emailAddress,
+                    controller: _phoneCtl,
+                    keyboardType: TextInputType.phone,
                     decoration: InputDecoration(
                       filled: true,
                       fillColor: Colors.grey.shade200,
                       border: border,
-                      hintText: 'you@example.com',
-                      contentPadding:
-                          const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                      hintText: 'เบอร์โทรศัพท์',
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 14),
                     ),
-                    validator: (v) =>
-                        (v == null || v.trim().isEmpty) ? 'กรอกอีเมล' : null,
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) {
+                        return 'กรอกเบอร์โทรศัพท์';
+                      }
+                      if (v.trim().length < 9) {
+                        return 'เบอร์โทรศัพท์ไม่ถูกต้อง';
+                      }
+                      return null;
+                    },
                   ),
                   const SizedBox(height: 15),
-                  const Text("รหัสผ่าน"),
-                  const SizedBox(height: 5),
-                  TextFormField(
-                    controller: _passCtl,
-                    obscureText: true,
-                    decoration: InputDecoration(
-                      filled: true,
-                      fillColor: Colors.grey.shade200,
-                      border: border,
-                      hintText: '••••••••',
-                      contentPadding:
-                          const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+
+                  if (_codeSent) ...[
+                    const Text("รหัส OTP"),
+                    const SizedBox(height: 5),
+                    TextFormField(
+                      controller: _otpCtl,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: Colors.grey.shade200,
+                        border: border,
+                        hintText: 'รหัส OTP',
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 14),
+                      ),
                     ),
-                    validator: (v) =>
-                        (v == null || v.isEmpty) ? 'กรอกรหัสผ่าน' : null,
-                  ),
-                  const SizedBox(height: 20),
+                    const SizedBox(height: 20),
+                  ] else
+                    const SizedBox(height: 20),
+
                   ElevatedButton(
-                    onPressed: _loading ? null : _login,
+                    onPressed: _loading
+                        ? null
+                        : () {
+                            if (_codeSent) {
+                              _verifyOtpAndLogin();
+                            } else {
+                              _sendOtp();
+                            }
+                          },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.black87,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                          borderRadius: BorderRadius.circular(12)),
                     ),
                     child: _loading
                         ? const SizedBox(
                             width: 20,
                             height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Text("เข้าสู่ระบบ"),
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Text(_codeSent ? "ยืนยัน OTP" : "ส่งรหัส OTP"),
                   ),
+
                   const SizedBox(height: 15),
                   GestureDetector(
                     onTap: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const RegisterPage()),
+                        MaterialPageRoute(
+                            builder: (_) => const RegisterPage()),
                       );
                     },
                     child: const Center(
                       child: Text(
                         "สมัครสมาชิก",
-                        style: TextStyle(decoration: TextDecoration.underline),
+                        style: TextStyle(
+                            decoration: TextDecoration.underline),
                       ),
                     ),
                   ),

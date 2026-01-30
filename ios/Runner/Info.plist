@@ -6,6 +6,10 @@
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
 	<string>Finalproject</string>
+
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>ใช้ระบุตำแหน่งเพื่อปักหมุดจุดส่งสินค้า</string>
+
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>

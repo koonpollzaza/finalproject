@@ -105,11 +105,16 @@ dependencies:
   cupertino_icons: ^1.0.8
 
   # → ย้ายสองตัวนี้มาไว้ใต้ dependencies
-  firebase_core: ^3.15.2
-  firebase_auth: ^5.3.1
-  firebase_storage: ^12.4.10
-  cloud_firestore: ^5.6.2
+  firebase_core: ^3.15.2 #เชื่อมต่อ Firebase
+  firebase_auth: ^5.3.1 #เชื่อมต่อระบบสมาชิก
+  firebase_storage: ^12.4.10 #เชื่อมต่อระบบเก็บไฟล์
+  cloud_firestore: ^5.6.2 #เชื่อมต่อระบบฐานข้อมูล
   image_picker: ^1.1.2
+
+  google_maps_flutter: ^2.9.0
+  geolocator: ^13.0.2        # หาตำแหน่งปัจจุบัน/ขอสิทธิ์
+  geocoding: ^3.0.0
+  url_launcher: ^6.2.5
 
 dev_dependencies:
   flutter_test:

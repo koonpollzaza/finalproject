@@ -1,10 +1,10 @@
-// lib/home.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'food.dart';
-import 'drink.dart';
-import 'cart.dart';
-import 'login.dart'; // 👈 เพิ่มไฟล์ login.dart เข้ามา
+
+import 'store/food.dart';
+import 'store/drink.dart';
+import 'store/cart.dart';
+import 'login.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -15,20 +15,45 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   int _currentIndex = 0;
-  String? logoUrl;
+
+  bool isLoading = true;
+  List<String> imageUrls = [];
 
   @override
   void initState() {
     super.initState();
-    _loadLogo();
+    _loadStoreImages();
   }
 
-  Future<void> _loadLogo() async {
-    final ref = FirebaseStorage.instance.ref("logos/logo.jpg");
-    final url = await ref.getDownloadURL();
-    setState(() {
-      logoUrl = url;
-    });
+  Future<void> _loadStoreImages() async {
+    try {
+      final storage = FirebaseStorage.instance;
+
+      final files = [
+        'image_store/KAMU-01.jpg',
+        'image_store/KFC.png',
+        'image_store/Logo1.jpg',
+        'image_store/Logo1.png',
+      ];
+
+      List<String> urls = [];
+
+      for (var path in files) {
+        final ref = storage.ref(path);
+        final url = await ref.getDownloadURL();
+        urls.add(url);
+      }
+
+      setState(() {
+        imageUrls = urls;
+        isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('โหลดรูปไม่สำเร็จ: $e');
+      setState(() {
+        isLoading = false;
+      });
+    }
   }
 
   @override
@@ -37,17 +62,56 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         title: const Text("หน้าหลัก"),
         backgroundColor: Colors.cyan[300],
+        centerTitle: true,
       ),
-      body: Center(
-        child: logoUrl == null
-            ? const CircularProgressIndicator()
-            : Image.network(
-                logoUrl!,
-                width: 180,
-                height: 180,
-                fit: BoxFit.contain,
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'ร้านค้ายอดฮิต',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  Expanded(
+                    child: GridView.builder(
+                      itemCount: imageUrls.length,
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        crossAxisSpacing: 12,
+                        mainAxisSpacing: 12,
+                        childAspectRatio: 1,
+                      ),
+                      itemBuilder: (context, index) {
+                        return Card(
+                          elevation: 4,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Image.network(
+                              imageUrls[index],
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, __, ___) =>
+                                  const Icon(Icons.image_not_supported),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
-      ),
+            ),
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
         backgroundColor: Colors.cyan[200],
@@ -106,24 +170,23 @@ class _HomePageState extends State<HomePage> {
         content: const Text('คุณต้องการออกจากระบบหรือไม่?'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('ยกเลิก')),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('ยกเลิก'),
+          ),
           ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('ออกจากระบบ')),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('ออกจากระบบ'),
+          ),
         ],
       ),
     );
 
-    if (ok == true) {
-      // ล้าง navigation stack แล้วไปหน้า Login
-      if (context.mounted) {
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (_) => const LoginPage()),
-          (route) => false,
-        );
-      }
+    if (ok == true && context.mounted) {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginPage()),
+        (route) => false,
+      );
     }
   }
 }

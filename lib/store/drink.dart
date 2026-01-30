@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'home.dart';
+import '../home.dart';
 import 'food.dart';
 import 'cart.dart';
 import 'menu_food.dart'; // ใช้หน้า StoreDetailPage เดิม
@@ -18,7 +18,7 @@ class _DrinkPageState extends State<DrinkPage> {
   // 🔎 ดึงเฉพาะร้านหมวด “ร้านเครื่องดื่ม”
   Query<Map<String, dynamic>> get _query => FirebaseFirestore.instance
       .collection('stores')
-      .where('category', isEqualTo: 'ร้านเครื่องดื่ม')
+      .where('shopType', isEqualTo: 'drink')
       .where('isBanned', isEqualTo: false);
   // ถ้ามีฟิลด์ name ค่อยเปิดเรียง:
   // .orderBy('name');

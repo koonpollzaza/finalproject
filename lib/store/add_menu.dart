@@ -1,136 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'dart:io';
 import 'package:image_picker/image_picker.dart';
-
-class StoreHomePage extends StatelessWidget {
-  const StoreHomePage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      return const Scaffold(body: Center(child: Text('ยังไม่ได้ล็อกอิน')));
-    }
-
-    final storeFuture = FirebaseFirestore.instance
-        .collection('stores')
-        .where('ownerUid', isEqualTo: user.uid)
-        .where('role', isEqualTo: 'store')
-        .limit(1)
-        .get();
-
-    return FutureBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      future: storeFuture,
-      builder: (context, snap) {
-        if (snap.hasError) {
-          return Scaffold(body: Center(child: Text('เกิดข้อผิดพลาด: ${snap.error}')));
-        }
-        if (!snap.hasData) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
-        }
-        if (snap.data!.docs.isEmpty) {
-          return const Scaffold(body: Center(child: Text('ยังไม่ได้สร้างร้าน / ไม่พบสิทธิ์ร้านค้า')));
-        }
-
-        final storeDoc = snap.data!.docs.first;
-        final storeRef = storeDoc.reference;
-        final storeName = (storeDoc.data()['name'] ?? 'ร้านของฉัน').toString();
-        final menusRef = storeRef.collection('menus').orderBy('name');
-
-        return Scaffold(
-          appBar: AppBar(
-            title: const Text('หน้าร้านค้า'),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.logout),
-                onPressed: () async {
-                  await FirebaseAuth.instance.signOut();
-                  if (context.mounted) Navigator.pop(context);
-                },
-              ),
-            ],
-          ),
-          floatingActionButton: FloatingActionButton.extended(
-            icon: const Icon(Icons.add),
-            label: const Text('เพิ่มเมนู'),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => AddMenuPage(storeRef: storeRef),
-                ),
-              );
-            },
-          ),
-          body: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                child: Text('เมนูของ: $storeName',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-              ),
-              const Divider(height: 1),
-              Expanded(
-                child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                  stream: menusRef.snapshots(),
-                  builder: (context, menuSnap) {
-                    if (menuSnap.hasError) {
-                      return Center(child: Text('โหลดเมนูผิดพลาด: ${menuSnap.error}'));
-                    }
-                    if (!menuSnap.hasData) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    final docs = menuSnap.data!.docs;
-                    if (docs.isEmpty) {
-                      return const Center(child: Text('ยังไม่มีเมนูในร้านนี้'));
-                    }
-                    return ListView.separated(
-                      padding: const EdgeInsets.all(12),
-                      itemCount: docs.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 8),
-                      itemBuilder: (_, i) {
-                        final m = docs[i].data();
-                        final name = (m['name'] ?? '').toString();
-                        final img  = (m['imageUrl'] ?? '').toString();
-                        final price = (m['price'] is num)
-                            ? (m['price'] as num).toDouble()
-                            : double.tryParse('${m['price']}') ?? 0.0;
-
-                        return Card(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            side: const BorderSide(color: Colors.black12),
-                          ),
-                          child: ListTile(
-                            leading: img.isNotEmpty
-                                ? ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Image.network(
-                                      img, width: 56, height: 56, fit: BoxFit.cover,
-                                      errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported),
-                                    ),
-                                  )
-                                : const CircleAvatar(child: Icon(Icons.fastfood)),
-                            title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                            subtitle: Text('ราคา: ${price.toStringAsFixed(2)} บาท'),
-                          ),
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
+import 'dart:io';
 
 /// -----------------------------
 /// หน้าเพิ่มเมนู
@@ -278,7 +150,7 @@ class _AddMenuPageState extends State<AddMenuPage> {
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _priceCtl,
-                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   decoration: InputDecoration(
                     labelText: 'ราคา (บาท)',
                     border: border,

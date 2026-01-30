@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'home.dart';
+import '../home.dart';
 import 'drink.dart';
 import 'cart.dart';
 import 'menu_food.dart'; // ← เพิ่มบรรทัดนี้
@@ -18,7 +18,7 @@ class _FoodPageState extends State<FoodPage> {
   // 👇 คิวรีหลัก
   Query<Map<String, dynamic>> get _query => FirebaseFirestore.instance
       .collection('stores')
-      .where('category', isEqualTo: 'ร้านอาหาร')
+      .where('shopType', isEqualTo: 'food')
       .where('isBanned', isEqualTo: false);
       // หมายเหตุ: เปิด orderBy ทีหลังเมื่อทุกอย่าง OK
       // .orderBy('name');

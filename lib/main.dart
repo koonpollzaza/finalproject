@@ -1,8 +1,10 @@
 import 'package:finalproject/login.dart';
+import 'package:finalproject/store/cart.dart';
+import 'package:finalproject/store/store.dart';
+import 'package:finalproject/store/rider.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart'; // ถูกสร้างโดย flutterfire configure
-import 'home.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
