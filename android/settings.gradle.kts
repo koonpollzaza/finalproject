@@ -18,8 +18,13 @@ pluginManagement {
 
 plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
-    id("com.android.application") version "8.7.3" apply false
-    id("org.jetbrains.kotlin.android") version "2.1.0" apply false
+
+    // 🔴 แก้ตรงนี้
+    id("com.android.application") version "8.9.1" apply false
+    id("com.android.library") version "8.9.1" apply false
+
+    // Kotlin แนะนำให้ใช้ 1.9.24 กับ AGP 8.9.x
+    id("org.jetbrains.kotlin.android") version "1.9.24" apply false
 
     id("com.google.gms.google-services") version "4.4.3" apply false
 }
