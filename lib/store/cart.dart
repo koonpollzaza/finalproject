@@ -5,6 +5,7 @@ import 'food.dart';
 import 'drink.dart';
 import 'package:finalproject/history.dart';
 import 'package:finalproject/select_location_page.dart';
+import 'package:finalproject/store/payment.dart';
 
 class CartPage extends StatefulWidget {
   const CartPage({super.key});
@@ -340,6 +341,7 @@ class _CartPageState extends State<CartPage> {
       'status': 'pending',
       'riderStatus': 'waiting',
       'total': total,
+      'payment': 'waiting',
       'createdAt': FieldValue.serverTimestamp(),
     });
 
@@ -352,11 +354,20 @@ class _CartPageState extends State<CartPage> {
 
     await batch.commit();
 
-    _descriptionC.clear(); // ✅ ล้างค่า
+_descriptionC.clear();
 
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('สั่งสินค้าเรียบร้อย ✅')),
-    );
+if (!mounted) return;
+
+// 👉 ไปหน้า PaymentPage
+Navigator.push(
+  context,
+  MaterialPageRoute(
+    builder: (_) => PaymentPage(
+      orderId: orderRef.id,
+      total: total,
+    ),
+  ),
+);
+
   }
 }
