@@ -120,8 +120,7 @@ class _RegisterPageState extends State<RegisterPage> {
         smsCode: otpCtrl.text.trim(),
       );
 
-      final cred =
-          await FirebaseAuth.instance.signInWithCredential(credential);
+      final cred = await FirebaseAuth.instance.signInWithCredential(credential);
 
       await _afterRegister(cred.user);
     } on FirebaseAuthException catch (e) {
@@ -154,8 +153,9 @@ class _RegisterPageState extends State<RegisterPage> {
         'name': displayName,
         'ownerUid': uid,
         'phone': phone,
-        'shopType': _shopType,        // ✅ ประเภรร้าน
-        'isBanned': false,            // ✅ ค่าเริ่มต้นไม่ถูกแบน
+        'shopType': _shopType, // ✅ ประเภรร้าน
+        'isBanned': false,
+        'approvalStatus': 'pending', // ✅ ค่าเริ่มต้นไม่ถูกแบน
         'createdAt': FieldValue.serverTimestamp(),
       });
       storeId = storeRef.id;
@@ -186,7 +186,8 @@ class _RegisterPageState extends State<RegisterPage> {
         'name': displayName,
         'userUid': uid,
         'phone': phone,
-        'isBanned': false,            // ถ้าอยากให้ rider ก็มีสถานะแบนได้
+        'isBanned': false, // ถ้าอยากให้ rider ก็มีสถานะแบนได้
+        'approvalStatus': 'pending', // ✅ ค่าเริ่มต้นไม่ถูกแบน
         'createdAt': FieldValue.serverTimestamp(),
       });
       riderId = riderRef.id;
@@ -200,9 +201,10 @@ class _RegisterPageState extends State<RegisterPage> {
       'userId': uid,
       'storeId': storeId, // null ถ้าไม่ใช่ store
       'riderId': riderId, // null ถ้าไม่ใช่ rider
-      'isBanned': false,  // ✅ สมาชิกใหม่ทุกคน isBanned = false
+      'isBanned': false, // ✅ สมาชิกใหม่ทุกคน isBanned = false
       if (storeLogoUrl != null) 'storeLogoUrl': storeLogoUrl,
-      if (_selectedRole == 'store') 'shopType': _shopType, // ✅ เก็บใน users ด้วย
+      if (_selectedRole == 'store')
+        'shopType': _shopType, // ✅ เก็บใน users ด้วย
     }, SetOptions(merge: true));
 
     _toast('สมัครสมาชิกสำเร็จ');
@@ -239,8 +241,7 @@ class _RegisterPageState extends State<RegisterPage> {
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide.none,
       ),
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
     );
   }
 
@@ -379,7 +380,6 @@ class _RegisterPageState extends State<RegisterPage> {
                       ],
                     ),
                     const SizedBox(height: 16),
-
                     const Text('ประเภทร้านค้า'),
                     const SizedBox(height: 6),
                     Container(

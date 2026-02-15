@@ -6,8 +6,10 @@ class RiderOrderDetailPage extends StatelessWidget {
   final String orderId;
   const RiderOrderDetailPage({super.key, required this.orderId});
 
-  /// ✅ เปิด Google Maps (ไม่ใช้ canLaunch)
+  /// ✅ เปิด Google Maps
   Future<void> _openGoogleMap(String location) async {
+    if (location.isEmpty) return;
+
     final uri = Uri.parse(
       'https://www.google.com/maps/search/?api=1&query=$location',
     );
@@ -35,44 +37,117 @@ class RiderOrderDetailPage extends StatelessWidget {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final data = snap.data!.data()!;
-          final status = data['status'];
-          final location = data['location'];
+          final data = snap.data!.data();
+          if (data == null) {
+            return const Center(child: Text('ไม่พบข้อมูลออเดอร์'));
+          }
+
+          final status = data['status'] ?? '';
+          final location = data['location'] ?? '';
+          final fullname = data['fullname'] ?? '';
+          final description = data['description'] ?? '';
 
           return Column(
             children: [
-              ListTile(
-                title: Text(data['fullname']),
-                subtitle: Text(location),
-                trailing: Text(
-                  status.toString().toUpperCase(),
-                  style: TextStyle(
-                    color:
-                        status == 'success' ? Colors.green : Colors.orange,
-                    fontWeight: FontWeight.bold,
+              /// 🔶 ข้อมูลลูกค้า
+              Card(
+                margin: const EdgeInsets.all(12),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        fullname,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+
+                      Row(
+                        children: [
+                          const Icon(Icons.location_on,
+                              size: 18, color: Colors.red),
+                          const SizedBox(width: 6),
+                          Expanded(child: Text(location)),
+                        ],
+                      ),
+
+                      /// ✅ แสดง description ถ้ามี
+                      if (description.toString().isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.shade50,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Row(
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.note,
+                                  color: Colors.orange),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  description,
+                                  style: const TextStyle(
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+
+                      const SizedBox(height: 8),
+
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          status.toString().toUpperCase(),
+                          style: TextStyle(
+                            color: status == 'success'
+                                ? Colors.green
+                                : Colors.orange,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
 
               /// 🔵 ปุ่มเปิดแผนที่
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.map),
-                    label: const Text('เปิดเส้นทาง Google Maps'),
-                    onPressed: () => _openGoogleMap(location),
+              if (location.toString().isNotEmpty)
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.map),
+                      label:
+                          const Text('เปิดเส้นทาง Google Maps'),
+                      onPressed: () =>
+                          _openGoogleMap(location),
+                    ),
                   ),
                 ),
-              ),
 
               const Divider(),
 
-              /// 🍱 รายการอาหาร
+              /// 🍱 รายการสินค้า
               Expanded(
-                child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                  stream: orderRef.collection('items').snapshots(),
+                child: StreamBuilder<
+                    QuerySnapshot<Map<String, dynamic>>>(
+                  stream:
+                      orderRef.collection('items').snapshots(),
                   builder: (context, itemSnap) {
                     if (!itemSnap.hasData) {
                       return const Center(
@@ -81,22 +156,36 @@ class RiderOrderDetailPage extends StatelessWidget {
 
                     final items = itemSnap.data!.docs;
 
+                    if (items.isEmpty) {
+                      return const Center(
+                          child: Text('ไม่มีรายการสินค้า'));
+                    }
+
                     return ListView.builder(
                       itemCount: items.length,
                       itemBuilder: (context, index) {
-                        final item = items[index].data();
-                        return ListTile(
-                          leading: item['imageUrl'] != null &&
-                                  item['imageUrl'] != ''
-                              ? Image.network(
-                                  item['imageUrl'],
-                                  width: 50,
-                                  fit: BoxFit.cover,
-                                )
-                              : null,
-                          title: Text(item['name']),
-                          subtitle: Text(
-                              'จำนวน ${item['qty']} ชิ้น'),
+                        final item =
+                            items[index].data();
+
+                        return Card(
+                          margin: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
+                          child: ListTile(
+                            leading: item['imageUrl'] != null &&
+                                    item['imageUrl'] != ''
+                                ? Image.network(
+                                    item['imageUrl'],
+                                    width: 50,
+                                    fit: BoxFit.cover,
+                                  )
+                                : const Icon(
+                                    Icons.fastfood,
+                                    size: 40,
+                                  ),
+                            title: Text(item['name'] ?? ''),
+                            subtitle: Text(
+                                'จำนวน ${item['qty'] ?? 1} ชิ้น'),
+                          ),
                         );
                       },
                     );
@@ -113,8 +202,10 @@ class RiderOrderDetailPage extends StatelessWidget {
                     height: 45,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green),
-                      child: const Text('จัดส่งสำเร็จ'),
+                        backgroundColor: Colors.green,
+                      ),
+                      child:
+                          const Text('จัดส่งสำเร็จ'),
                       onPressed: () async {
                         await orderRef.update({
                           'status': 'success',
@@ -122,11 +213,16 @@ class RiderOrderDetailPage extends StatelessWidget {
                               FieldValue.serverTimestamp(),
                         });
 
+                        if (!context.mounted) return;
+
                         Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
+
+                        ScaffoldMessenger.of(context)
+                            .showSnackBar(
                           const SnackBar(
-                              content:
-                                  Text('จัดส่งสำเร็จ 🚴‍♂️')),
+                            content: Text(
+                                'จัดส่งสำเร็จ 🚴‍♂️'),
+                          ),
                         );
                       },
                     ),

@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../home.dart';
 import 'food.dart';
 import 'cart.dart';
-import 'menu_food.dart'; // ใช้หน้า StoreDetailPage เดิม
+import 'menu_food.dart';
 
 class DrinkPage extends StatefulWidget {
   const DrinkPage({super.key});
@@ -12,80 +12,67 @@ class DrinkPage extends StatefulWidget {
 }
 
 class _DrinkPageState extends State<DrinkPage> {
-  // 👉 อยู่แท็บ “เครื่องดื่ม”
   int _currentIndex = 1;
 
-  // 🔎 ดึงเฉพาะร้านหมวด “ร้านเครื่องดื่ม”
+  /// ✅ เพิ่ม approvalStatus = approved
   Query<Map<String, dynamic>> get _query => FirebaseFirestore.instance
       .collection('stores')
       .where('shopType', isEqualTo: 'drink')
-      .where('isBanned', isEqualTo: false);
-  // ถ้ามีฟิลด์ name ค่อยเปิดเรียง:
-  // .orderBy('name');
+      .where('isBanned', isEqualTo: false)
+      .where('approvalStatus', isEqualTo: 'approved');
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-          title: const Text("ร้านเครื่องดื่ม"),
-          backgroundColor: Colors.cyan[300]),
-      body: FutureBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        future: _query.limit(20).get(),
-        builder: (context, firstSnap) {
-          if (firstSnap.hasError) {
-            return _ErrorBox(
-                'FIRESTORE ERROR (first load):\n${firstSnap.error}');
+        title: const Text("ร้านเครื่องดื่ม"),
+        backgroundColor: Colors.cyan,
+      ),
+      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: _query.snapshots(),
+        builder: (context, snap) {
+          if (snap.hasError) {
+            return _ErrorBox('FIRESTORE ERROR:\n${snap.error}');
           }
-          if (firstSnap.connectionState != ConnectionState.done) {
+
+          if (snap.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: _query.snapshots(),
-            builder: (context, snap) {
-              if (snap.hasError) {
-                return _ErrorBox('FIRESTORE ERROR (stream):\n${snap.error}');
-              }
-              if (snap.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
+          final docs = snap.data?.docs ?? [];
 
-              final docs = snap.data?.docs ?? [];
-              if (docs.isEmpty) {
-                return const _InfoBox(
-                  'ไม่พบร้านที่ตรงเงื่อนไข\n'
-                  '• category = "ร้านเครื่องดื่ม"\n'
-                  '• isBanned = false',
-                );
-              }
+          if (docs.isEmpty) {
+            return const _InfoBox(
+              'ยังไม่มีร้านเครื่องดื่มที่ได้รับการอนุมัติ',
+            );
+          }
 
-              return ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: docs.length,
-                itemBuilder: (context, i) {
-                  final d = docs[i].data();
-                  final name = (d['name'] ?? '') as String;
-                  final imageUrl = (d['imageUrl'] ?? '') as String? ?? '';
-                  final desc = (d['description'] ?? '') as String? ?? '';
-                  final id = docs[i].id;
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: docs.length,
+            itemBuilder: (context, i) {
+              final d = docs[i].data();
+              final id = docs[i].id;
 
-                  return _StoreCard(
-                    name: name.isEmpty ? '(ไม่มีชื่อร้าน)' : name,
-                    imageUrl: imageUrl,
-                    description: desc,
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => StoreDetailPage(
-                            id: id,
-                            name: name,
-                            imageUrl: imageUrl,
-                            description: desc,
-                          ),
-                        ),
-                      );
-                    },
+              final name = (d['name'] ?? '') as String;
+              final imageUrl = (d['imageUrl'] ?? '') as String? ?? '';
+              final desc = (d['description'] ?? '') as String? ?? '';
+
+              return _StoreCard(
+                name: name.isEmpty ? '(ไม่มีชื่อร้าน)' : name,
+                imageUrl: imageUrl,
+                description: desc,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => StoreDetailPage(
+                        id: id,
+                        name: name,
+                        imageUrl: imageUrl,
+                        description: desc,
+                      ),
+                    ),
                   );
                 },
               );
@@ -101,20 +88,23 @@ class _DrinkPageState extends State<DrinkPage> {
         unselectedItemColor: Colors.black54,
         onTap: (index) async {
           if (index == _currentIndex) return;
+
           if (index == 0) {
-            // → ไปหน้าอาหาร
             Navigator.pushReplacement(
-                context, MaterialPageRoute(builder: (_) => const FoodPage()));
-          } else if (index == 1) {
-            // อยู่หน้าเครื่องดื่มแล้ว
+              context,
+              MaterialPageRoute(builder: (_) => const FoodPage()),
+            );
           } else if (index == 2) {
             Navigator.pushReplacement(
-                context, MaterialPageRoute(builder: (_) => const CartPage()));
+              context,
+              MaterialPageRoute(builder: (_) => const CartPage()),
+            );
           } else if (index == 3) {
             final ok = await _confirmLogout(context);
             if (ok == true && context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('ออกจากระบบเรียบร้อย')));
+                const SnackBar(content: Text('ออกจากระบบเรียบร้อย')),
+              );
               Navigator.pushAndRemoveUntil(
                 context,
                 MaterialPageRoute(builder: (_) => const HomePage()),
@@ -122,6 +112,7 @@ class _DrinkPageState extends State<DrinkPage> {
               );
             }
           }
+
           setState(() => _currentIndex = index);
         },
         items: const [
@@ -162,11 +153,13 @@ class _StoreCard extends StatelessWidget {
   final String imageUrl;
   final String description;
   final VoidCallback? onTap;
-  const _StoreCard(
-      {required this.name,
-      required this.imageUrl,
-      required this.description,
-      this.onTap});
+
+  const _StoreCard({
+    required this.name,
+    required this.imageUrl,
+    required this.description,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -198,11 +191,14 @@ class _StoreCard extends StatelessWidget {
             else
               _imageFallback(),
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
-              child: Text(name,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      fontSize: 20, fontWeight: FontWeight.bold)),
+              padding:
+                  const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
+              child: Text(
+                name,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 20, fontWeight: FontWeight.bold),
+              ),
             ),
           ],
         ),
@@ -221,16 +217,21 @@ class _StoreCard extends StatelessWidget {
 class _ErrorBox extends StatelessWidget {
   final String msg;
   const _ErrorBox(this.msg);
+
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.all(16),
-        child: SelectableText(msg, style: const TextStyle(color: Colors.red)),
+        child: SelectableText(
+          msg,
+          style: const TextStyle(color: Colors.red),
+        ),
       );
 }
 
 class _InfoBox extends StatelessWidget {
   final String msg;
   const _InfoBox(this.msg);
+
   @override
   Widget build(BuildContext context) =>
       Center(child: Text(msg, textAlign: TextAlign.center));

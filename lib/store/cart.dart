@@ -20,6 +20,7 @@ class _CartPageState extends State<CartPage> {
   final _fullNameC = TextEditingController();
   final _phoneC = TextEditingController();
   final _addressC = TextEditingController();
+  final _descriptionC = TextEditingController(); // ✅ เพิ่ม
 
   double? _lat;
   double? _lng;
@@ -27,12 +28,39 @@ class _CartPageState extends State<CartPage> {
   CollectionReference<Map<String, dynamic>> get cartRef =>
       FirebaseFirestore.instance.collection('cart');
 
+  CollectionReference<Map<String, dynamic>> get storeRef =>
+      FirebaseFirestore.instance.collection('stores');
+
   @override
   void dispose() {
     _fullNameC.dispose();
     _phoneC.dispose();
     _addressC.dispose();
+    _descriptionC.dispose(); // ✅ dispose
     super.dispose();
+  }
+
+  Future<String?> _getStoreName(String storeId) async {
+    final doc = await storeRef.doc(storeId).get();
+    if (doc.exists) {
+      return doc.data()?['name'];
+    }
+    return null;
+  }
+
+  Future<void> _updateQty(
+      DocumentReference docRef, int currentQty, int change) async {
+    final newQty = currentQty + change;
+
+    if (newQty <= 0) {
+      await docRef.delete();
+    } else {
+      await docRef.update({'qty': newQty});
+    }
+  }
+
+  Future<void> _deleteItem(DocumentReference docRef) async {
+    await docRef.delete();
   }
 
   @override
@@ -51,6 +79,17 @@ class _CartPageState extends State<CartPage> {
 
           final docs = snap.data!.docs;
 
+          if (docs.isEmpty) {
+            return const Center(child: Text('ยังไม่มีสินค้าในตะกร้า'));
+          }
+
+          final storeIds =
+              docs.map((d) => d.data()['storeId']?.toString() ?? '').toSet();
+
+          final bool multipleStores = storeIds.length > 1;
+          final String? storeId =
+              storeIds.isNotEmpty ? storeIds.first : null;
+
           final total = docs.fold<double>(0, (sum, d) {
             final data = d.data();
             return sum +
@@ -58,35 +97,89 @@ class _CartPageState extends State<CartPage> {
                     (data['qty'] ?? 1).toInt();
           });
 
-          return Column(
-            children: [
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    children: [
-                      _buildForm(),
-                      const SizedBox(height: 10),
-                      if (docs.isEmpty)
-                        const Text('ยังไม่มีสินค้าในตะกร้า')
-                      else
-                        ...docs.map((doc) {
-                          final data = doc.data();
-                          return Card(
-                            child: ListTile(
-                              title: Text(data['name'] ?? ''),
-                              subtitle: Text(
-                                  'ราคา ${data['price']} บาท'),
-                              trailing: Text('x${data['qty']}'),
+          return FutureBuilder<String?>(
+            future: storeId != null ? _getStoreName(storeId) : null,
+            builder: (context, storeSnap) {
+              final storeName = storeSnap.data;
+
+              return Column(
+                children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        children: [
+                          _buildForm(),
+                          const SizedBox(height: 10),
+
+                          if (storeName != null)
+                            Card(
+                              color: Colors.orange.shade50,
+                              child: ListTile(
+                                leading: const Icon(Icons.store),
+                                title: Text(
+                                  storeName,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ),
                             ),
-                          );
-                        }),
-                    ],
+
+                          if (multipleStores)
+                            const Padding(
+                              padding: EdgeInsets.all(8.0),
+                              child: Text(
+                                'คุณสามารถสั่งได้ครั้งละ 1 ร้านเท่านั้น',
+                                style: TextStyle(color: Colors.red),
+                              ),
+                            ),
+
+                          const SizedBox(height: 10),
+
+                          ...docs.map((doc) {
+                            final data = doc.data();
+                            final qty = data['qty'] ?? 1;
+
+                            return Card(
+                              child: ListTile(
+                                title: Text(data['name'] ?? ''),
+                                subtitle:
+                                    Text('ราคา ${data['price']} บาท'),
+                                leading: IconButton(
+                                  icon: const Icon(Icons.delete,
+                                      color: Colors.red),
+                                  onPressed: () =>
+                                      _deleteItem(doc.reference),
+                                ),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.remove),
+                                      onPressed: () =>
+                                          _updateQty(doc.reference, qty, -1),
+                                    ),
+                                    Text('$qty'),
+                                    IconButton(
+                                      icon: const Icon(Icons.add),
+                                      onPressed: () =>
+                                          _updateQty(doc.reference, qty, 1),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              _buildSummary(total, docs),
-            ],
+                  _buildSummary(total, docs, multipleStores, storeId),
+                ],
+              );
+            },
           );
         },
       ),
@@ -138,13 +231,15 @@ class _CartPageState extends State<CartPage> {
             children: [
               TextFormField(
                 controller: _fullNameC,
-                decoration: const InputDecoration(labelText: 'ชื่อผู้สั่ง'),
+                decoration:
+                    const InputDecoration(labelText: 'ชื่อผู้สั่ง'),
                 validator: (v) =>
                     v == null || v.isEmpty ? 'กรุณากรอกชื่อ' : null,
               ),
               TextFormField(
                 controller: _phoneC,
-                decoration: const InputDecoration(labelText: 'เบอร์ติดต่อ'),
+                decoration:
+                    const InputDecoration(labelText: 'เบอร์ติดต่อ'),
                 keyboardType: TextInputType.phone,
                 validator: (v) =>
                     v == null || v.length < 10 ? 'เบอร์ไม่ถูกต้อง' : null,
@@ -160,6 +255,14 @@ class _CartPageState extends State<CartPage> {
                 validator: (_) =>
                     _lat == null ? 'กรุณาเลือกตำแหน่งจัดส่ง' : null,
               ),
+
+              // ✅ เพิ่ม description
+              TextFormField(
+                controller: _descriptionC,
+                decoration: const InputDecoration(
+                    labelText: 'รายละเอียดเพิ่มเติม'),
+                maxLines: 3,
+              ),
             ],
           ),
         ),
@@ -167,8 +270,11 @@ class _CartPageState extends State<CartPage> {
     );
   }
 
-  Widget _buildSummary(double total,
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+  Widget _buildSummary(
+      double total,
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+      bool multipleStores,
+      String? storeId) {
     return Container(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -176,9 +282,8 @@ class _CartPageState extends State<CartPage> {
           Row(
             children: [
               const Expanded(
-                child: Text('รวมทั้งหมด',
-                    style: TextStyle(fontSize: 18)),
-              ),
+                  child: Text('รวมทั้งหมด',
+                      style: TextStyle(fontSize: 18))),
               Text('${total.toStringAsFixed(2)} บาท',
                   style: const TextStyle(
                       fontSize: 18, fontWeight: FontWeight.bold)),
@@ -189,11 +294,11 @@ class _CartPageState extends State<CartPage> {
             width: double.infinity,
             child: ElevatedButton(
               child: const Text('ยืนยันการสั่งสินค้า'),
-              onPressed: docs.isEmpty
+              onPressed: docs.isEmpty || multipleStores
                   ? null
                   : () {
                       if (_formKey.currentState!.validate()) {
-                        _submitOrder(docs, total);
+                        _submitOrder(docs, total, storeId);
                       }
                     },
             ),
@@ -220,7 +325,8 @@ class _CartPageState extends State<CartPage> {
 
   Future<void> _submitOrder(
       List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-      double total) async {
+      double total,
+      String? storeId) async {
     final db = FirebaseFirestore.instance;
 
     final orderRef = await db.collection('orders').add({
@@ -229,6 +335,8 @@ class _CartPageState extends State<CartPage> {
       'location': _addressC.text.trim(),
       'lat': _lat,
       'lng': _lng,
+      'description': _descriptionC.text.trim(), // ✅ ส่งเข้า Firebase
+      'storeId': storeId,
       'status': 'pending',
       'riderStatus': 'waiting',
       'total': total,
@@ -243,6 +351,8 @@ class _CartPageState extends State<CartPage> {
     }
 
     await batch.commit();
+
+    _descriptionC.clear(); // ✅ ล้างค่า
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(

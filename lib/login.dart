@@ -141,48 +141,91 @@ class _LoginPageState extends State<LoginPage> {
   // ใช้ userId (uid) แยก role แล้วแยกหน้า
   // ================================
   Future<void> _afterLogin(User user) async {
-    final uid = user.uid; // = userId ที่เราเก็บไว้ตอน register
+  final uid = user.uid;
 
-    final snap =
-        await FirebaseFirestore.instance.collection('users').doc(uid).get();
+  final userSnap =
+      await FirebaseFirestore.instance.collection('users').doc(uid).get();
 
-    if (!snap.exists) {
-      _showSnack('ยังไม่พบข้อมูลผู้ใช้ใน users/$uid');
+  if (!userSnap.exists) {
+    _showSnack('ยังไม่พบข้อมูลผู้ใช้');
+    return;
+  }
+
+  final data = userSnap.data()!;
+  final role = (data['role'] ?? 'member').toString().toLowerCase();
+
+  if (!mounted) return;
+
+  // ===== MEMBER =====
+  if (role == 'member') {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const HomePage()),
+    );
+    return;
+  }
+
+  // ===== STORE =====
+  if (role == 'store') {
+    final storeQuery = await FirebaseFirestore.instance
+        .collection('stores')
+        .where('ownerUid', isEqualTo: uid)
+        .limit(1)
+        .get();
+
+    if (storeQuery.docs.isEmpty) {
+      _showSnack('ไม่พบข้อมูลร้านค้า');
       return;
     }
 
-    final data = snap.data()!;
-    final role = (data['role'] ?? 'member').toString().toLowerCase();
+    final status =
+        (storeQuery.docs.first.data()['approvalStatus'] ?? 'pending')
+            .toString();
 
-    if (!mounted) return;
-
-    switch (role) {
-      case 'store':
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const StoreHomePage()),
-        );
-        break;
-
-      case 'rider':
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => RiderHomePage(riderId: uid),
-          ),
-        );
-        break;  
-
-
-      case 'member':
-      default:
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const HomePage()),
-        );
-        break;
+    if (status == 'pending') {
+      _showSnack('ร้านค้าของคุณกำลังรอการอนุมัติจากแอดมิน');
+      await FirebaseAuth.instance.signOut();
+      return;
     }
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const StoreHomePage()),
+    );
+    return;
   }
+
+  // ===== RIDER =====
+  if (role == 'rider') {
+    final riderQuery = await FirebaseFirestore.instance
+        .collection('riders')
+        .where('userUid', isEqualTo: uid)
+        .limit(1)
+        .get();
+
+    if (riderQuery.docs.isEmpty) {
+      _showSnack('ไม่พบข้อมูลไรเดอร์');
+      return;
+    }
+
+    final status =
+        (riderQuery.docs.first.data()['approvalStatus'] ?? 'pending')
+            .toString();
+
+    if (status == 'pending') {
+      _showSnack('บัญชีไรเดอร์ของคุณกำลังรอการอนุมัติ');
+      await FirebaseAuth.instance.signOut();
+      return;
+    }
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RiderHomePage(riderId: uid),
+      ),
+    );
+  }
+}
 
   String _friendlyAuthMessage(FirebaseAuthException e) {
     switch (e.code) {
