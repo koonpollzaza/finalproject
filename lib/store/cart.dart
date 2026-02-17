@@ -339,9 +339,9 @@ class _CartPageState extends State<CartPage> {
       'description': _descriptionC.text.trim(), // ✅ ส่งเข้า Firebase
       'storeId': storeId,
       'status': 'pending',
-      'riderStatus': 'waiting',
+      'riderStatus': 'pending',
       'total': total,
-      'payment': 'waiting',
+      'payment': 'pending',
       'createdAt': FieldValue.serverTimestamp(),
     });
 

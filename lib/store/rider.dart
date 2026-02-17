@@ -130,7 +130,7 @@ class RiderHomePage extends StatelessWidget {
                             'riderId': riderId,
                             'riderName': riderName,
                             'status': 'pending',
-                            'riderStatus': 'accepted',
+                            'riderStatus': 'success',
                           });
 
                           Navigator.push(
