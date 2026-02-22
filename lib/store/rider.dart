@@ -2,17 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'rider_order_detail.dart';
-import '../login.dart'; // 🔁 แก้ชื่อไฟล์ตามโปรเจกต์คุณ
+import '../login.dart';
 
 class RiderHomePage extends StatelessWidget {
-  final String riderId; // ใช้เป็นเบอร์โทร rider
+  final String riderId;
 
   const RiderHomePage({
     super.key,
     required this.riderId,
   });
 
-  /// 🔍 โหลดชื่อ rider จาก collection riders ด้วย phone
+  /// โหลดชื่อ rider
   Future<String> _loadRiderName() async {
     final snap = await FirebaseFirestore.instance
         .collection('riders')
@@ -21,11 +21,10 @@ class RiderHomePage extends StatelessWidget {
         .get();
 
     if (snap.docs.isEmpty) return 'Rider';
-
     return snap.docs.first.data()['name'] ?? 'Rider';
   }
 
-  /// 🚪 ออกจากระบบ
+  /// Logout
   Future<void> _logout(BuildContext context) async {
     await FirebaseAuth.instance.signOut();
 
@@ -34,6 +33,52 @@ class RiderHomePage extends StatelessWidget {
       MaterialPageRoute(builder: (_) => const LoginPage()),
       (_) => false,
     );
+  }
+
+  /// 🔐 รับงานแบบ Transaction (กันกดพร้อมกัน)
+  Future<void> _acceptOrder({
+    required BuildContext context,
+    required DocumentSnapshot<Map<String, dynamic>> doc,
+    required String riderName,
+  }) async {
+    final orderRef = doc.reference;
+
+    try {
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final freshSnap = await transaction.get(orderRef);
+
+        final currentStatus = freshSnap.data()?['riderStatus'];
+
+        /// ❗ ถ้ามีคนรับแล้ว
+        if (currentStatus != 'pending') {
+          throw Exception("Order already accepted");
+        }
+
+        /// ✅ รับงาน
+        transaction.update(orderRef, {
+          'riderId': riderId,
+          'riderName': riderName,
+          'riderStatus': 'success',
+        });
+      });
+
+      if (context.mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+                RiderOrderDetailPage(orderId: doc.id),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('งานนี้มีไรเดอร์รับไปแล้ว'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -52,26 +97,19 @@ class RiderHomePage extends StatelessWidget {
                 const Text('🚴‍♂️ งานที่รอรับ'),
                 Text(
                   riderName,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w400,
-                  ),
+                  style: const TextStyle(fontSize: 14),
                 ),
               ],
             ),
-
-            /// 🔴 ปุ่มออกจากระบบ
             actions: [
               IconButton(
                 icon: const Icon(Icons.logout),
-                tooltip: 'ออกจากระบบ',
                 onPressed: () async {
                   final confirm = await showDialog<bool>(
                     context: context,
                     builder: (_) => AlertDialog(
                       title: const Text('ออกจากระบบ'),
-                      content:
-                          const Text('คุณต้องการออกจากระบบหรือไม่?'),
+                      content: const Text('คุณต้องการออกจากระบบหรือไม่?'),
                       actions: [
                         TextButton(
                           onPressed: () =>
@@ -95,10 +133,13 @@ class RiderHomePage extends StatelessWidget {
             ],
           ),
 
+          /// 🔥 แสดงเฉพาะ Delivery ที่ยังไม่มีใครรับ
           body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
             stream: FirebaseFirestore.instance
                 .collection('orders')
                 .where('status', isEqualTo: 'pending')
+                .where('payment', isEqualTo: 'success')
+                .where('riderStatus', isEqualTo: 'pending')
                 .snapshots(),
             builder: (context, snap) {
               if (snap.connectionState == ConnectionState.waiting) {
@@ -121,25 +162,20 @@ class RiderHomePage extends StatelessWidget {
                   return Card(
                     margin: const EdgeInsets.all(10),
                     child: ListTile(
-                      title: Text(data['fullname'] ?? ''),
+                      title: Text(
+                        data['fullname'] ?? '',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                       subtitle: Text(data['location'] ?? ''),
                       trailing: ElevatedButton(
                         child: const Text('รับงาน'),
-                        onPressed: () async {
-                          await doc.reference.update({
-                            'riderId': riderId,
-                            'riderName': riderName,
-                            'status': 'pending',
-                            'riderStatus': 'success',
-                          });
-
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  RiderOrderDetailPage(
-                                      orderId: doc.id),
-                            ),
+                        onPressed: () {
+                          _acceptOrder(
+                            context: context,
+                            doc: doc,
+                            riderName: riderName,
                           );
                         },
                       ),

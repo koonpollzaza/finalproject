@@ -43,9 +43,22 @@ class RiderOrderDetailPage extends StatelessWidget {
           }
 
           final status = data['status'] ?? '';
+          final payment = data['payment'] ?? '';
           final location = data['location'] ?? '';
           final fullname = data['fullname'] ?? '';
           final description = data['description'] ?? '';
+
+          /// 🔎 แปลงสถานะการชำระเงิน
+          String paymentText = '';
+          Color paymentColor = Colors.grey;
+
+          if (payment == 'success') {
+            paymentText = 'ชำระเงินแล้ว';
+            paymentColor = Colors.green;
+          } else if (payment == 'pending') {
+            paymentText = 'ชำระเงินไม่สำเร็จ';
+            paymentColor = Colors.red;
+          }
 
           return Column(
             children: [
@@ -75,7 +88,7 @@ class RiderOrderDetailPage extends StatelessWidget {
                         ],
                       ),
 
-                      /// ✅ แสดง description ถ้ามี
+                      /// ✅ แสดงหมายเหตุ
                       if (description.toString().isNotEmpty) ...[
                         const SizedBox(height: 10),
                         Container(
@@ -106,6 +119,23 @@ class RiderOrderDetailPage extends StatelessWidget {
 
                       const SizedBox(height: 8),
 
+                      /// 🔵 แสดงสถานะการชำระเงิน
+                      if (paymentText.isNotEmpty)
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: Text(
+                            paymentText,
+                            style: TextStyle(
+                              color: paymentColor,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+
+                      const SizedBox(height: 4),
+
+                      /// 🔶 แสดงสถานะออเดอร์
                       Align(
                         alignment: Alignment.centerRight,
                         child: Text(

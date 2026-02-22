@@ -21,7 +21,7 @@ class PaymentPage extends StatefulWidget {
 }
 
 class _PaymentPageState extends State<PaymentPage> {
-  int secondsLeft = 120;
+  int secondsLeft = 15;
   Timer? timer;
   late String qrData;
 
@@ -44,14 +44,9 @@ class _PaymentPageState extends State<PaymentPage> {
     String format(String id, String value) =>
         id + value.length.toString().padLeft(2, '0') + value;
 
-    String sanitizeMobile(String mobile) {
-      if (mobile.startsWith("0")) {
-        return "66" + mobile.substring(1);
-      }
-      return mobile;
+    if (mobile.startsWith("0")) {
+      mobile = "66" + mobile.substring(1);
     }
-
-    String mobileFormatted = sanitizeMobile(mobile);
 
     String qr =
         format("00", "01") +
@@ -59,7 +54,7 @@ class _PaymentPageState extends State<PaymentPage> {
         format(
             "29",
             format("00", "A000000677010111") +
-                format("01", mobileFormatted)) +
+                format("01", mobile)) +
         format("52", "0000") +
         format("53", "764") +
         format("54", amount.toStringAsFixed(2)) +
@@ -88,12 +83,11 @@ class _PaymentPageState extends State<PaymentPage> {
   }
 
   // ===============================
-  // 📷 เลือกรูปสลิป
+  // 📷 เลือกรูป
   // ===============================
   Future<void> pickImage() async {
-    final picker = ImagePicker();
-    final picked =
-        await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    final picked = await ImagePicker()
+        .pickImage(source: ImageSource.gallery, imageQuality: 70);
 
     if (picked != null) {
       setState(() {
@@ -117,8 +111,7 @@ class _PaymentPageState extends State<PaymentPage> {
 
     try {
       final ref = FirebaseStorage.instance
-          .ref()
-          .child('slips/${widget.orderId}.jpg');
+          .ref('slips/${widget.orderId}.jpg');
 
       await ref.putFile(slipImage!);
       final url = await ref.getDownloadURL();
@@ -131,12 +124,9 @@ class _PaymentPageState extends State<PaymentPage> {
         'slipUrl': url,
       });
 
+      timer?.cancel();
+
       if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("ส่งสลิปสำเร็จ รอตรวจสอบ")),
-      );
-
       Navigator.pop(context);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -148,16 +138,46 @@ class _PaymentPageState extends State<PaymentPage> {
   }
 
   // ===============================
-
+  // ⏳ Timer เมื่อหมดเวลา
+  // ===============================
   void startTimer() {
     timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (secondsLeft == 0) {
-        t.cancel();
-        Navigator.pop(context);
+        handleTimeout();
       } else {
         setState(() => secondsLeft--);
       }
     });
+  }
+
+  Future<void> handleTimeout() async {
+    timer?.cancel();
+
+    if (!mounted) return;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        title: const Text("หมดเวลา"),
+        content: const Text("ชำระเงินไม่สำเร็จ"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("ตกลง"),
+          ),
+        ],
+      ),
+    );
+
+    // 🔥 ลบ document order ทั้งก้อน
+    await FirebaseFirestore.instance
+        .collection('orders')
+        .doc(widget.orderId)
+        .delete();
+
+    if (!mounted) return;
+    Navigator.pop(context);
   }
 
   @override
@@ -171,67 +191,54 @@ class _PaymentPageState extends State<PaymentPage> {
     final minutes = (secondsLeft ~/ 60).toString().padLeft(2, '0');
     final seconds = (secondsLeft % 60).toString().padLeft(2, '0');
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("PromptPay Payment"),
-        backgroundColor: const Color.fromARGB(255, 80, 160, 83),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            const Text("สแกนเพื่อชำระเงิน",
-                style:
-                    TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-
-            const SizedBox(height: 20),
-
-            QrImageView(data: qrData, size: 240),
-
-            const SizedBox(height: 20),
-
-            Text(
-              "ยอด ${widget.total.toStringAsFixed(2)} บาท",
-              style:
-                  const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-
-            const SizedBox(height: 15),
-
-            Text(
-              "เวลาที่เหลือ $minutes:$seconds",
-              style: const TextStyle(color: Colors.red, fontSize: 18),
-            ),
-
-            const Divider(height: 40),
-
-            // 📷 แสดงรูป
-            if (slipImage != null)
-              Image.file(slipImage!, height: 180),
-
-            const SizedBox(height: 10),
-
-            ElevatedButton(
-              onPressed: pickImage,
-              child: const Text("แนบสลิป"),
-            ),
-
-            const SizedBox(height: 15),
-
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: uploading ? null : uploadSlip,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                ),
-                child: uploading
-                    ? const CircularProgressIndicator(
-                        color: Colors.white)
-                    : const Text("ส่งสลิปเพื่อยืนยัน"),
+    return WillPopScope(
+      onWillPop: () async => false,
+      child: Scaffold(
+        appBar: AppBar(
+          automaticallyImplyLeading: false,
+          title: const Text("PromptPay Payment"),
+        ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            children: [
+              const Text("สแกนเพื่อชำระเงิน",
+                  style: TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 20),
+              QrImageView(data: qrData, size: 240),
+              const SizedBox(height: 20),
+              Text(
+                "ยอด ${widget.total.toStringAsFixed(2)} บาท",
+                style: const TextStyle(
+                    fontSize: 20, fontWeight: FontWeight.bold),
               ),
-            ),
-          ],
+              const SizedBox(height: 15),
+              Text(
+                "เวลาที่เหลือ $minutes:$seconds",
+                style:
+                    const TextStyle(color: Colors.red, fontSize: 18),
+              ),
+              const Divider(height: 40),
+              if (slipImage != null)
+                Image.file(slipImage!, height: 180),
+              ElevatedButton(
+                onPressed: pickImage,
+                child: const Text("แนบสลิป"),
+              ),
+              const SizedBox(height: 15),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: uploading ? null : uploadSlip,
+                  child: uploading
+                      ? const CircularProgressIndicator(
+                          color: Colors.white)
+                      : const Text("ส่งสลิปเพื่อยืนยัน"),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
