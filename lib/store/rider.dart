@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'rider_order_detail.dart';
+import 'history_rider.dart';
 import '../login.dart';
 
 class RiderHomePage extends StatelessWidget {
@@ -12,7 +13,9 @@ class RiderHomePage extends StatelessWidget {
     required this.riderId,
   });
 
-  /// โหลดชื่อ rider
+  /// ===============================
+  /// โหลดชื่อ Rider
+  /// ===============================
   Future<String> _loadRiderName() async {
     final snap = await FirebaseFirestore.instance
         .collection('riders')
@@ -24,18 +27,24 @@ class RiderHomePage extends StatelessWidget {
     return snap.docs.first.data()['name'] ?? 'Rider';
   }
 
+  /// ===============================
   /// Logout
+  /// ===============================
   Future<void> _logout(BuildContext context) async {
     await FirebaseAuth.instance.signOut();
 
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const LoginPage()),
-      (_) => false,
-    );
+    if (context.mounted) {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginPage()),
+        (_) => false,
+      );
+    }
   }
 
-  /// 🔐 รับงานแบบ Transaction (กันกดพร้อมกัน)
+  /// ===============================
+  /// รับงาน (Transaction กันรับซ้อน)
+  /// ===============================
   Future<void> _acceptOrder({
     required BuildContext context,
     required DocumentSnapshot<Map<String, dynamic>> doc,
@@ -46,15 +55,12 @@ class RiderHomePage extends StatelessWidget {
     try {
       await FirebaseFirestore.instance.runTransaction((transaction) async {
         final freshSnap = await transaction.get(orderRef);
-
         final currentStatus = freshSnap.data()?['riderStatus'];
 
-        /// ❗ ถ้ามีคนรับแล้ว
         if (currentStatus != 'pending') {
           throw Exception("Order already accepted");
         }
 
-        /// ✅ รับงาน
         transaction.update(orderRef, {
           'riderId': riderId,
           'riderName': riderName,
@@ -81,6 +87,9 @@ class RiderHomePage extends StatelessWidget {
     }
   }
 
+  /// ===============================
+  /// BUILD UI
+  /// ===============================
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<String>(
@@ -101,7 +110,27 @@ class RiderHomePage extends StatelessWidget {
                 ),
               ],
             ),
+
+            /// 🔥 ปุ่มด้านขวา
             actions: [
+
+              /// ✅ ปุ่มไปหน้าประวัติ
+              IconButton(
+                icon: const Icon(Icons.history),
+                tooltip: 'ประวัติคำสั่งซื้อ',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => HistoryRiderPage(
+                        riderId: riderId,
+                      ),
+                    ),
+                  );
+                },
+              ),
+
+              /// 🔐 ปุ่ม Logout
               IconButton(
                 icon: const Icon(Icons.logout),
                 onPressed: () async {
@@ -133,7 +162,9 @@ class RiderHomePage extends StatelessWidget {
             ],
           ),
 
-          /// 🔥 แสดงเฉพาะ Delivery ที่ยังไม่มีใครรับ
+          /// ===============================
+          /// แสดงเฉพาะงานที่ยังไม่มีใครรับ
+          /// ===============================
           body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
             stream: FirebaseFirestore.instance
                 .collection('orders')
@@ -144,13 +175,25 @@ class RiderHomePage extends StatelessWidget {
             builder: (context, snap) {
               if (snap.connectionState == ConnectionState.waiting) {
                 return const Center(
-                    child: CircularProgressIndicator());
+                  child: CircularProgressIndicator(),
+                );
+              }
+
+              if (snap.hasError) {
+                return const Center(
+                  child: Text('เกิดข้อผิดพลาดในการโหลดข้อมูล'),
+                );
               }
 
               final orders = snap.data?.docs ?? [];
 
               if (orders.isEmpty) {
-                return const Center(child: Text('ไม่มีงานรอรับ'));
+                return const Center(
+                  child: Text(
+                    'ไม่มีงานรอรับ',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                );
               }
 
               return ListView.builder(
@@ -168,7 +211,9 @@ class RiderHomePage extends StatelessWidget {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      subtitle: Text(data['location'] ?? ''),
+                      subtitle: Text(
+                        data['location'] ?? '',
+                      ),
                       trailing: ElevatedButton(
                         child: const Text('รับงาน'),
                         onPressed: () {

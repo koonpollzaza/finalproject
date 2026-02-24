@@ -4,6 +4,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'store/food.dart';
 import 'store/drink.dart';
 import 'store/cart.dart';
+import 'history.dart';
 import 'login.dart';
 
 class HomePage extends StatefulWidget {
@@ -79,7 +80,6 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
                   const SizedBox(height: 16),
-
                   Expanded(
                     child: GridView.builder(
                       itemCount: imageUrls.length,
@@ -137,6 +137,12 @@ class _HomePageState extends State<HomePage> {
               MaterialPageRoute(builder: (_) => const CartPage()),
             );
           } else if (index == 3) {
+            // ✅ ไปหน้าประวัติคำสั่งซื้อ
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const HistoryPage()),
+            );
+          } else if (index == 4) {
             _confirmLogout(context);
           }
         },
@@ -152,6 +158,10 @@ class _HomePageState extends State<HomePage> {
           BottomNavigationBarItem(
             icon: Icon(Icons.shopping_cart),
             label: "ตะกร้า",
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.receipt_long), // ✅ เพิ่ม
+            label: "ประวัติ",
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.logout),

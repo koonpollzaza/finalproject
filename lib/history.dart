@@ -1,32 +1,56 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class HistoryPage extends StatelessWidget {
   const HistoryPage({super.key});
 
-  CollectionReference<Map<String, dynamic>> get ordersRef =>
-      FirebaseFirestore.instance.collection('orders');
-
-  CollectionReference<Map<String, dynamic>> get storesRef =>
-      FirebaseFirestore.instance.collection('stores');
-
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+
+    // ถ้ายังไม่ได้ login
+    if (user == null) {
+      return const Scaffold(
+        body: Center(
+          child: Text("กรุณาเข้าสู่ระบบ"),
+        ),
+      );
+    }
+
+    final uid = user.uid;
+
+    final ordersRef = FirebaseFirestore.instance.collection('orders');
+    final storesRef = FirebaseFirestore.instance.collection('stores');
+
     return Scaffold(
-      appBar: AppBar(title: const Text('ประวัติคำสั่งซื้อ')),
+      appBar: AppBar(
+        title: const Text('ประวัติคำสั่งซื้อ'),
+        backgroundColor: Colors.cyan,
+      ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: ordersRef.orderBy('createdAt', descending: true).snapshots(),
+        stream: ordersRef
+            .where('userId', isEqualTo: uid) // ✅ กรองตาม userId
+            .orderBy('createdAt', descending: true)
+            .snapshots(),
         builder: (context, snap) {
           if (snap.hasError) {
             return Center(child: Text('เกิดข้อผิดพลาด: ${snap.error}'));
           }
-          if (!snap.hasData) {
+
+          if (snap.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final docs = snap.data!.docs;
+          final docs = snap.data?.docs ?? [];
+
           if (docs.isEmpty) {
-            return const Center(child: Text('ยังไม่มีประวัติคำสั่งซื้อ'));
+            return const Center(
+              child: Text(
+                'ยังไม่มีประวัติคำสั่งซื้อ',
+                style: TextStyle(fontSize: 16),
+              ),
+            );
           }
 
           return ListView.separated(
@@ -37,20 +61,13 @@ class HistoryPage extends StatelessWidget {
               final d = docs[i];
               final data = d.data();
 
-              final status = (data['status'] ?? 'pending').toString();
-              final createdText = _formatTime(data['createdAt']);
-
-              final fullName = (data['fullname'] ?? '').toString();
-              final phone = (data['phone'] ?? '').toString();
-              final address = (data['location'] ?? '').toString();
-
               return _OrderCard(
                 orderId: d.id,
-                status: status,
-                createdText: createdText,
-                fullName: fullName,
-                phone: phone,
-                address: address,
+                status: (data['status'] ?? 'pending').toString(),
+                createdText: _formatTime(data['createdAt']),
+                fullName: (data['fullname'] ?? '').toString(),
+                phone: (data['phone'] ?? '').toString(),
+                address: (data['location'] ?? '').toString(),
                 storesRef: storesRef,
               );
             },
@@ -60,10 +77,11 @@ class HistoryPage extends StatelessWidget {
     );
   }
 
-  String _formatTime(dynamic ts) {
+  static String _formatTime(dynamic ts) {
     if (ts is Timestamp) {
       final dt = ts.toDate();
-      return '${dt.day}/${dt.month}/${dt.year} ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}';
+      return '${dt.day}/${dt.month}/${dt.year} '
+          '${dt.hour}:${dt.minute.toString().padLeft(2, '0')}';
     }
     return '-';
   }
@@ -90,17 +108,19 @@ class _OrderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = status == 'success'
-        ? Colors.green
-        : Colors.orange;
+    final statusColor =
+        status.toLowerCase() == 'success' ? Colors.green : Colors.orange;
 
     return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: ExpansionTile(
         title: Row(
           children: [
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
                 color: statusColor.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(8),
@@ -133,7 +153,10 @@ class _OrderCard extends StatelessWidget {
           ],
         ),
         children: [
-          _OrderItemsList(orderId: orderId, storesRef: storesRef),
+          _OrderItemsList(
+            orderId: orderId,
+            storesRef: storesRef,
+          ),
         ],
       ),
     );
@@ -167,6 +190,7 @@ class _OrderItemsList extends StatelessWidget {
         }
 
         final items = snap.data!.docs;
+
         if (items.isEmpty) {
           return const Padding(
             padding: EdgeInsets.all(12),
@@ -179,12 +203,15 @@ class _OrderItemsList extends StatelessWidget {
             final data = doc.data();
 
             final name = (data['name'] ?? '').toString();
-            final price = (data['price'] as num?)?.toDouble() ?? 0;
-            final qty = (data['qty'] as num?)?.toInt() ?? 1;
+            final price =
+                (data['price'] as num?)?.toDouble() ?? 0;
+            final qty =
+                (data['qty'] as num?)?.toInt() ?? 1;
             final total = price * qty;
-
-            final imageUrl = (data['imageUrl'] ?? '').toString();
-            final storeId = (data['storeId'] ?? '').toString();
+            final imageUrl =
+                (data['imageUrl'] ?? '').toString();
+            final storeId =
+                (data['storeId'] ?? '').toString();
 
             return ListTile(
               leading: imageUrl.isEmpty
@@ -200,10 +227,14 @@ class _OrderItemsList extends StatelessWidget {
                     ),
               title: Text(name),
               subtitle: Text(
-                '${price.toStringAsFixed(2)} x $qty = ${total.toStringAsFixed(2)} บาท',
+                '${price.toStringAsFixed(2)} x $qty = '
+                '${total.toStringAsFixed(2)} บาท',
               ),
               trailing: storeId.isNotEmpty
-                  ? _StoreChip(storesRef: storesRef, storeId: storeId)
+                  ? _StoreChip(
+                      storesRef: storesRef,
+                      storeId: storeId,
+                    )
                   : null,
             );
           }).toList(),
@@ -227,9 +258,8 @@ class _StoreChip extends StatelessWidget {
     return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       future: storesRef.doc(storeId).get(),
       builder: (context, snap) {
-        if (!snap.hasData) {
-          return const SizedBox.shrink();
-        }
+        if (!snap.hasData) return const SizedBox.shrink();
+
         final data = snap.data!.data();
         if (data == null) return const SizedBox.shrink();
 

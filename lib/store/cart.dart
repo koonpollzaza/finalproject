@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:finalproject/select_location_page.dart';
 import 'package:finalproject/store/payment.dart';
 
@@ -28,6 +29,8 @@ class _CartPageState extends State<CartPage> {
 
   CollectionReference<Map<String, dynamic>> get storeRef =>
       FirebaseFirestore.instance.collection('stores');
+
+  String? get uid => FirebaseAuth.instance.currentUser?.uid;
 
   @override
   void dispose() {
@@ -62,23 +65,30 @@ class _CartPageState extends State<CartPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (uid == null) {
+      return const Scaffold(
+        body: Center(child: Text("กรุณาเข้าสู่ระบบ")),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('ตะกร้า'),
         backgroundColor: Colors.cyan,
       ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: cartRef.snapshots(),
+        // ✅ ดึงเฉพาะ cart ของ user นี้
+        stream: cartRef.where('userId', isEqualTo: uid).snapshots(),
         builder: (context, snap) {
-          if (!snap.hasData) {
+          if (snap.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final docs = snap.data!.docs;
-
-          if (docs.isEmpty) {
+          if (!snap.hasData || snap.data!.docs.isEmpty) {
             return const Center(child: Text('ยังไม่มีสินค้าในตะกร้า'));
           }
+
+          final docs = snap.data!.docs;
 
           final storeIds =
               docs.map((d) => d.data()['storeId']?.toString() ?? '').toSet();
@@ -142,8 +152,7 @@ class _CartPageState extends State<CartPage> {
                             leading: IconButton(
                               icon: const Icon(Icons.delete,
                                   color: Colors.red),
-                              onPressed: () =>
-                                  _deleteItem(doc.reference),
+                              onPressed: () => _deleteItem(doc.reference),
                             ),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -306,9 +315,11 @@ class _CartPageState extends State<CartPage> {
       List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
       double total,
       String? storeId) async {
+
     final db = FirebaseFirestore.instance;
 
     final Map<String, dynamic> orderData = {
+      'userId': uid, // ✅ เก็บ userId ใน order
       'fullname': _fullNameC.text.trim(),
       'phone': _phoneC.text.trim(),
       'description': _descriptionC.text.trim(),
@@ -329,8 +340,7 @@ class _CartPageState extends State<CartPage> {
       orderData['PickUp'] = true;
     }
 
-    final orderRef =
-        await db.collection('orders').add(orderData);
+    final orderRef = await db.collection('orders').add(orderData);
 
     final batch = db.batch();
     for (final d in docs) {

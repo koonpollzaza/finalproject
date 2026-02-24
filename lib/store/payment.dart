@@ -21,7 +21,7 @@ class PaymentPage extends StatefulWidget {
 }
 
 class _PaymentPageState extends State<PaymentPage> {
-  int secondsLeft = 15;
+  int secondsLeft = 120;
   Timer? timer;
   late String qrData;
 

@@ -14,10 +14,16 @@ class HistoryStorePage extends StatelessWidget {
         backgroundColor: Colors.cyan,
       ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance
-            .collection('orders')
-            .orderBy('createdAt', descending: true)
-            .snapshots(),
+        stream: (storeId != null && storeId!.isNotEmpty)
+    ? FirebaseFirestore.instance
+        .collection('orders')
+        .where('storeId', isEqualTo: storeId) // ✅ เช็ค storeId ที่ login
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+    : FirebaseFirestore.instance
+        .collection('orders')
+        .orderBy('createdAt', descending: true)
+        .snapshots(),
         builder: (context, snap) {
           if (snap.hasError) {
             return Center(child: Text('เกิดข้อผิดพลาด: ${snap.error}'));
