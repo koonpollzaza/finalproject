@@ -4,24 +4,20 @@ import 'package:url_launcher/url_launcher.dart';
 
 class RiderOrderDetailPage extends StatelessWidget {
   final String orderId;
+
   const RiderOrderDetailPage({super.key, required this.orderId});
 
-  /// ✅ เปิด Google Maps
-  Future<void> _openGoogleMap(String location) async {
-    if (location.isEmpty) return;
+  /// เปิด Google Maps
+  Future<void> _openMap(double lat, double lng) async {
+    final uri =
+        Uri.parse("https://www.google.com/maps/dir/?api=1&destination=$lat,$lng");
 
-    final uri = Uri.parse(
-      'https://www.google.com/maps/search/?api=1&query=$location',
-    );
-
-    await launchUrl(
-      uri,
-      mode: LaunchMode.externalApplication,
-    );
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   @override
   Widget build(BuildContext context) {
+
     final orderRef =
         FirebaseFirestore.instance.collection('orders').doc(orderId);
 
@@ -30,25 +26,31 @@ class RiderOrderDetailPage extends StatelessWidget {
         title: const Text('📦 รายละเอียดงาน'),
         backgroundColor: Colors.orange,
       ),
+
       body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
         stream: orderRef.snapshots(),
         builder: (context, snap) {
+
           if (!snap.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
 
           final data = snap.data!.data();
+
           if (data == null) {
-            return const Center(child: Text('ไม่พบข้อมูลออเดอร์'));
+            return const Center(child: Text("ไม่พบข้อมูล"));
           }
 
+          final fullname = data['fullname'] ?? '';
+          final location = data['location'] ?? '';
+          final description = data['description'] ?? '';
           final status = data['status'] ?? '';
           final payment = data['payment'] ?? '';
-          final location = data['location'] ?? '';
-          final fullname = data['fullname'] ?? '';
-          final description = data['description'] ?? '';
+          final storeId = data['storeId'] ?? '';
 
-          /// 🔎 แปลงสถานะการชำระเงิน
+          final lat = (data['lat'] ?? 0).toDouble();
+          final lng = (data['lng'] ?? 0).toDouble();
+
           String paymentText = '';
           Color paymentColor = Colors.grey;
 
@@ -62,14 +64,17 @@ class RiderOrderDetailPage extends StatelessWidget {
 
           return Column(
             children: [
-              /// 🔶 ข้อมูลลูกค้า
+
+              /// ข้อมูลลูกค้า
               Card(
                 margin: const EdgeInsets.all(12),
                 child: Padding(
                   padding: const EdgeInsets.all(12),
+
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+
                       Text(
                         fullname,
                         style: const TextStyle(
@@ -77,41 +82,33 @@ class RiderOrderDetailPage extends StatelessWidget {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
+
                       const SizedBox(height: 6),
 
                       Row(
                         children: [
                           const Icon(Icons.location_on,
-                              size: 18, color: Colors.red),
+                              color: Colors.red, size: 18),
                           const SizedBox(width: 6),
                           Expanded(child: Text(location)),
                         ],
                       ),
 
-                      /// ✅ แสดงหมายเหตุ
                       if (description.toString().isNotEmpty) ...[
                         const SizedBox(height: 10),
+
                         Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
                             color: Colors.orange.shade50,
                             borderRadius: BorderRadius.circular(10),
                           ),
+
                           child: Row(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
                             children: [
-                              const Icon(Icons.note,
-                                  color: Colors.orange),
+                              const Icon(Icons.note, color: Colors.orange),
                               const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(
-                                  description,
-                                  style: const TextStyle(
-                                    fontStyle: FontStyle.italic,
-                                  ),
-                                ),
-                              ),
+                              Expanded(child: Text(description)),
                             ],
                           ),
                         ),
@@ -119,7 +116,6 @@ class RiderOrderDetailPage extends StatelessWidget {
 
                       const SizedBox(height: 8),
 
-                      /// 🔵 แสดงสถานะการชำระเงิน
                       if (paymentText.isNotEmpty)
                         Align(
                           alignment: Alignment.centerRight,
@@ -128,14 +124,10 @@ class RiderOrderDetailPage extends StatelessWidget {
                             style: TextStyle(
                               color: paymentColor,
                               fontWeight: FontWeight.bold,
-                              fontSize: 16,
                             ),
                           ),
                         ),
 
-                      const SizedBox(height: 4),
-
-                      /// 🔶 แสดงสถานะออเดอร์
                       Align(
                         alignment: Alignment.centerRight,
                         child: Text(
@@ -153,94 +145,178 @@ class RiderOrderDetailPage extends StatelessWidget {
                 ),
               ),
 
-              /// 🔵 ปุ่มเปิดแผนที่
-              if (location.toString().isNotEmpty)
-                Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.map),
-                      label:
-                          const Text('เปิดเส้นทาง Google Maps'),
-                      onPressed: () =>
-                          _openGoogleMap(location),
-                    ),
-                  ),
+              /// ร้านค้า
+              if (storeId != '')
+                FutureBuilder<DocumentSnapshot>(
+                  future: FirebaseFirestore.instance
+                      .collection('stores')
+                      .doc(storeId)
+                      .get(),
+
+                  builder: (context, storeSnap) {
+
+                    if (!storeSnap.hasData) {
+                      return const SizedBox();
+                    }
+
+                    final storeData =
+                        storeSnap.data!.data() as Map<String, dynamic>;
+
+                    final storeName =
+                        storeData['name'] ?? 'ไม่ทราบชื่อร้าน';
+
+                    final address =
+                        storeData['address'] ?? '';
+
+                    final latStore =
+                        (storeData['lat_store'] ?? 0).toDouble();
+
+                    final lngStore =
+                        (storeData['lng_store'] ?? 0).toDouble();
+
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+
+                          Card(
+                            child: ListTile(
+                              leading: const Icon(
+                                Icons.store,
+                                color: Colors.orange,
+                              ),
+
+                              title: Text(
+                                storeName,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+
+                              subtitle: Text(address),
+                            ),
+                          ),
+
+                          const SizedBox(height: 6),
+
+                          /// ไปร้านค้า
+                          SizedBox(
+                            width: double.infinity,
+
+                            child: ElevatedButton.icon(
+                              icon: const Icon(Icons.store),
+
+                              label:
+                                  const Text("นำทางไปที่ร้านค้า"),
+
+                              onPressed: () =>
+                                  _openMap(latStore, lngStore),
+                            ),
+                          ),
+
+                          const SizedBox(height: 6),
+
+                          /// ไปหาลูกค้า
+                          SizedBox(
+                            width: double.infinity,
+
+                            child: ElevatedButton.icon(
+                              icon: const Icon(Icons.navigation),
+
+                              label:
+                                  const Text("นำทางไปหาลูกค้า"),
+
+                              onPressed: () => _openMap(lat, lng),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
 
               const Divider(),
 
-              /// 🍱 รายการสินค้า
+              /// รายการอาหาร
               Expanded(
                 child: StreamBuilder<
-                    QuerySnapshot<Map<String, dynamic>>>(
-                  stream:
-                      orderRef.collection('items').snapshots(),
-                  builder: (context, itemSnap) {
-                    if (!itemSnap.hasData) {
-                      return const Center(
-                          child: CircularProgressIndicator());
-                    }
+                        QuerySnapshot<Map<String, dynamic>>>(
+                    stream:
+                        orderRef.collection('items').snapshots(),
 
-                    final items = itemSnap.data!.docs;
+                    builder: (context, itemSnap) {
 
-                    if (items.isEmpty) {
-                      return const Center(
-                          child: Text('ไม่มีรายการสินค้า'));
-                    }
+                      if (!itemSnap.hasData) {
+                        return const Center(
+                            child: CircularProgressIndicator());
+                      }
 
-                    return ListView.builder(
-                      itemCount: items.length,
-                      itemBuilder: (context, index) {
-                        final item =
-                            items[index].data();
+                      final items = itemSnap.data!.docs;
 
-                        return Card(
-                          margin: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 6),
-                          child: ListTile(
-                            leading: item['imageUrl'] != null &&
-                                    item['imageUrl'] != ''
-                                ? Image.network(
-                                    item['imageUrl'],
-                                    width: 50,
-                                    fit: BoxFit.cover,
-                                  )
-                                : const Icon(
-                                    Icons.fastfood,
-                                    size: 40,
-                                  ),
-                            title: Text(item['name'] ?? ''),
-                            subtitle: Text(
-                                'จำนวน ${item['qty'] ?? 1} ชิ้น'),
-                          ),
-                        );
-                      },
-                    );
-                  },
-                ),
+                      if (items.isEmpty) {
+                        return const Center(
+                            child: Text("ไม่มีสินค้า"));
+                      }
+
+                      return ListView.builder(
+                        itemCount: items.length,
+
+                        itemBuilder: (context, index) {
+
+                          final item = items[index].data();
+
+                          return Card(
+                            margin: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
+
+                            child: ListTile(
+                              leading: item['imageUrl'] != null &&
+                                      item['imageUrl'] != ''
+                                  ? Image.network(
+                                      item['imageUrl'],
+                                      width: 50,
+                                      fit: BoxFit.cover,
+                                    )
+                                  : const Icon(
+                                      Icons.fastfood,
+                                      size: 40,
+                                    ),
+
+                              title: Text(item['name'] ?? ''),
+
+                              subtitle: Text(
+                                  "จำนวน ${item['qty'] ?? 1} ชิ้น"),
+                            ),
+                          );
+                        },
+                      );
+                    }),
               ),
 
-              /// ✅ ปุ่มจัดส่งสำเร็จ
+              /// ปุ่มจัดส่งสำเร็จ
               if (status == 'pending')
                 Padding(
                   padding: const EdgeInsets.all(12),
+
                   child: SizedBox(
                     width: double.infinity,
                     height: 45,
+
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
                       ),
-                      child:
-                          const Text('จัดส่งสำเร็จ'),
+
+                      child: const Text("จัดส่งสำเร็จ"),
+
                       onPressed: () async {
+
                         await orderRef.update({
-                          'status': 'success',
-                          'deliveredAt':
-                              FieldValue.serverTimestamp(),
+                          "status": "success",
+                          "deliveredAt":
+                              FieldValue.serverTimestamp()
                         });
 
                         if (!context.mounted) return;
@@ -250,8 +326,7 @@ class RiderOrderDetailPage extends StatelessWidget {
                         ScaffoldMessenger.of(context)
                             .showSnackBar(
                           const SnackBar(
-                            content: Text(
-                                'จัดส่งสำเร็จ 🚴‍♂️'),
+                            content: Text("จัดส่งสำเร็จ 🚴"),
                           ),
                         );
                       },

@@ -23,68 +23,149 @@ class StoreDetailPage extends StatelessWidget {
         .collection('menus');
 
     return Scaffold(
-      appBar: AppBar(title: Text(name)),
-      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: menusRef.orderBy('name').snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(child: Text('เกิดข้อผิดพลาด: ${snapshot.error}'));
-          }
-
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final docs = snapshot.data!.docs;
-
-          if (docs.isEmpty) {
-            return const Center(child: Text("ยังไม่มีเมนูในร้านนี้"));
-          }
-
-          return ListView.builder(
-            itemCount: docs.length,
-            itemBuilder: (_, i) {
-              final data = docs[i].data();
-              final menuId = docs[i].id;
-              final menuName = (data['name'] ?? '').toString();
-              final price = (data['price'] is num)
-                  ? (data['price'] as num).toDouble()
-                  : double.tryParse('${data['price']}') ?? 0.0;
-              final menuImage = (data['imageUrl'] ?? '').toString();
-
-              return ListTile(
-                leading: menuImage.isNotEmpty
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: Image.network(
-                          menuImage,
-                          width: 60,
-                          height: 60,
-                          fit: BoxFit.cover,
-                        ),
-                      )
-                    : const Icon(Icons.fastfood, size: 40),
-                title: Text(menuName),
-                subtitle: Text('ราคา ${price.toStringAsFixed(2)} บาท'),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 18),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => MenuItemPage(
-                        storeId: id,
-                        menuId: menuId,
-                        name: menuName,
-                        price: price,
-                        imageUrl: menuImage,
+      body: Column(
+        children: [
+          /// HEADER ร้าน
+          Stack(
+            children: [
+              imageUrl.isNotEmpty
+                  ? Image.network(
+                      imageUrl,
+                      height: 220,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                    )
+                  : Container(
+                      height: 220,
+                      color: Colors.grey[300],
+                      child: const Center(
+                        child: Icon(Icons.store, size: 80),
                       ),
                     ),
-                  );
-                },
-              );
-            },
-          );
-        },
+
+              Positioned(
+                top: 40,
+                left: 10,
+                child: CircleAvatar(
+                  backgroundColor: Colors.black54,
+                  child: IconButton(
+                    icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          /// ชื่อร้าน
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                Text(
+                  name,
+                  style: const TextStyle(
+                      fontSize: 24, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  description,
+                  style: const TextStyle(color: Colors.grey),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+
+          const Divider(),
+
+          /// รายการเมนู
+          Expanded(
+            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: menusRef.orderBy('name').snapshots(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                final docs = snapshot.data!.docs;
+
+                if (docs.isEmpty) {
+                  return const Center(child: Text("ยังไม่มีเมนูในร้านนี้"));
+                }
+
+                return ListView.builder(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: docs.length,
+                  itemBuilder: (_, i) {
+                    final data = docs[i].data();
+
+                    final menuId = docs[i].id;
+                    final menuName = (data['name'] ?? '').toString();
+
+                    final price = (data['price'] is num)
+                        ? (data['price'] as num).toDouble()
+                        : double.tryParse('${data['price']}') ?? 0.0;
+
+                    final menuImage = (data['imageUrl'] ?? '').toString();
+
+                    return Card(
+                      elevation: 3,
+                      margin: const EdgeInsets.only(bottom: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.all(10),
+                        leading: ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: menuImage.isNotEmpty
+                              ? Image.network(
+                                  menuImage,
+                                  width: 70,
+                                  height: 70,
+                                  fit: BoxFit.cover,
+                                )
+                              : Container(
+                                  width: 70,
+                                  height: 70,
+                                  color: Colors.grey[300],
+                                  child: const Icon(Icons.fastfood),
+                                ),
+                        ),
+                        title: Text(
+                          menuName,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        subtitle: Text(
+                          "${price.toStringAsFixed(0)} บาท",
+                          style: const TextStyle(
+                              color: Colors.red,
+                              fontWeight: FontWeight.bold),
+                        ),
+                        trailing: const Icon(Icons.arrow_forward_ios, size: 18),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => MenuItemPage(
+                                storeId: id,
+                                menuId: menuId,
+                                name: menuName,
+                                price: price,
+                                imageUrl: menuImage,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -118,16 +199,13 @@ class _MenuItemPageState extends State<MenuItemPage> {
     }
 
     final uid = user.uid;
-
     final docId = '${uid}_${widget.storeId}_${widget.menuId}';
 
-    final ref = FirebaseFirestore.instance
-        .collection('cart')
-        .doc(docId);
+    final ref = FirebaseFirestore.instance.collection('cart').doc(docId);
 
     await ref.set({
       'storeId': widget.storeId,
-      'userId': uid, // ✅ เก็บ userId
+      'userId': uid,
       'menuId': widget.menuId,
       'name': widget.name,
       'price': widget.price,
@@ -140,15 +218,11 @@ class _MenuItemPageState extends State<MenuItemPage> {
 
   @override
   Widget build(BuildContext context) {
-    final priceStr = widget.price.toStringAsFixed(2);
+    final total = widget.price * qty;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.name),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.shopping_cart),
@@ -158,106 +232,104 @@ class _MenuItemPageState extends State<MenuItemPage> {
                 MaterialPageRoute(builder: (_) => const CartPage()),
               );
             },
-          ),
+          )
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            if (widget.imageUrl.isNotEmpty)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.network(
+      body: Column(
+        children: [
+          /// รูปอาหาร
+          widget.imageUrl.isNotEmpty
+              ? Image.network(
                   widget.imageUrl,
-                  height: 200,
+                  height: 260,
                   width: double.infinity,
                   fit: BoxFit.cover,
-                ),
-              )
-            else
-              Container(
-                height: 200,
-                width: double.infinity,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
+                )
+              : Container(
+                  height: 260,
                   color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(12),
+                  child: const Icon(Icons.fastfood, size: 80),
                 ),
-                child: const Icon(Icons.fastfood, size: 60),
-              ),
-            const SizedBox(height: 16),
-            Text(widget.name,
-                style: const TextStyle(
-                    fontSize: 22, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Text('ราคา: $priceStr บาท'),
-            const SizedBox(height: 16),
 
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
               children: [
-                IconButton(
-                  icon: const Icon(Icons.remove_circle_outline),
-                  onPressed: () {
-                    if (qty > 1) setState(() => qty--);
-                  },
-                ),
-                Text('$qty',
+                Text(widget.name,
                     style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.bold)),
-                IconButton(
-                  icon: const Icon(Icons.add_circle_outline),
-                  onPressed: () => setState(() => qty++),
+                        fontSize: 24, fontWeight: FontWeight.bold)),
+
+                const SizedBox(height: 8),
+
+                Text(
+                  "${widget.price.toStringAsFixed(0)} บาท",
+                  style: const TextStyle(
+                      fontSize: 20,
+                      color: Colors.red,
+                      fontWeight: FontWeight.bold),
+                ),
+
+                const SizedBox(height: 20),
+
+                /// ปุ่มเพิ่มลดจำนวน
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton(
+                      iconSize: 32,
+                      icon: const Icon(Icons.remove_circle),
+                      onPressed: () {
+                        if (qty > 1) setState(() => qty--);
+                      },
+                    ),
+                    Text(
+                      "$qty",
+                      style: const TextStyle(
+                          fontSize: 22, fontWeight: FontWeight.bold),
+                    ),
+                    IconButton(
+                      iconSize: 32,
+                      icon: const Icon(Icons.add_circle),
+                      onPressed: () => setState(() => qty++),
+                    ),
+                  ],
                 ),
               ],
             ),
+          ),
 
-            const Spacer(),
+          const Spacer(),
 
-            ElevatedButton.icon(
-              icon: const Icon(Icons.add_shopping_cart),
-              label: Text(
-                  'Add to cart (${(widget.price * qty).toStringAsFixed(2)} บาท)'),
+          /// ปุ่มเพิ่มตะกร้า
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: ElevatedButton(
               onPressed: () async {
-                try {
-                  await _addToCart();
-                  if (!mounted) return;
+                await _addToCart();
 
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                          'เพิ่ม "${widget.name}" x$qty ลงตะกร้าแล้ว'),
-                    ),
-                  );
-                } catch (e) {
-                  if (!mounted) return;
+                if (!mounted) return;
 
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('เกิดข้อผิดพลาด: $e'),
-                    ),
-                  );
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 48)),
-            ),
-
-            const SizedBox(height: 12),
-
-            OutlinedButton.icon(
-              icon: const Icon(Icons.shopping_cart),
-              label: const Text('ดูตะกร้า'),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const CartPage()),
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('เพิ่ม ${widget.name} x$qty แล้ว'),
+                  ),
                 );
               },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                minimumSize: const Size(double.infinity, 55),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Text(
+                "เพิ่มลงตะกร้า • ${total.toStringAsFixed(0)} บาท",
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

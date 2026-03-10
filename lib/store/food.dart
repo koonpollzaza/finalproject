@@ -4,9 +4,11 @@ import '../home.dart';
 import 'drink.dart';
 import 'cart.dart';
 import 'menu_food.dart';
+import 'package:finalproject/history.dart';
 
 class FoodPage extends StatefulWidget {
   const FoodPage({super.key});
+
   @override
   State<FoodPage> createState() => _FoodPageState();
 }
@@ -14,7 +16,6 @@ class FoodPage extends StatefulWidget {
 class _FoodPageState extends State<FoodPage> {
   int _currentIndex = 0;
 
-  /// ✅ Query ใหม่ (เพิ่ม approvalStatus)
   Query<Map<String, dynamic>> get _query => FirebaseFirestore.instance
       .collection('stores')
       .where('shopType', isEqualTo: 'food')
@@ -24,10 +25,18 @@ class _FoodPageState extends State<FoodPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.grey[100],
+
       appBar: AppBar(
-        title: const Text("ร้านอาหาร"),
+        elevation: 0,
         backgroundColor: Colors.cyan,
+        centerTitle: true,
+        title: const Text(
+          "ร้านอาหาร",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
       ),
+
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: _query.snapshots(),
         builder: (context, snap) {
@@ -42,9 +51,7 @@ class _FoodPageState extends State<FoodPage> {
           final docs = snap.data?.docs ?? [];
 
           if (docs.isEmpty) {
-            return const _InfoBox(
-              'ยังไม่มีร้านที่ได้รับการอนุมัติ',
-            );
+            return const _InfoBox('ยังไม่มีร้านที่ได้รับการอนุมัติ');
           }
 
           return ListView.builder(
@@ -80,12 +87,13 @@ class _FoodPageState extends State<FoodPage> {
           );
         },
       ),
+
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
-        backgroundColor: Colors.cyan[200],
+        backgroundColor: Colors.white,
         currentIndex: _currentIndex,
-        selectedItemColor: Colors.black87,
-        unselectedItemColor: Colors.black54,
+        selectedItemColor: Colors.cyan,
+        unselectedItemColor: Colors.grey,
         onTap: (index) async {
           if (index == _currentIndex) return;
 
@@ -94,17 +102,30 @@ class _FoodPageState extends State<FoodPage> {
               context,
               MaterialPageRoute(builder: (_) => const DrinkPage()),
             );
-          } else if (index == 2) {
+          }
+
+          else if (index == 2) {
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(builder: (_) => const CartPage()),
             );
-          } else if (index == 3) {
+          }
+
+          else if (index == 3) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const HistoryPage()),
+            );
+          }
+
+          else if (index == 4) {
             final ok = await _confirmLogout(context);
+
             if (ok == true && context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('ออกจากระบบเรียบร้อย')),
               );
+
               Navigator.pushAndRemoveUntil(
                 context,
                 MaterialPageRoute(builder: (_) => const HomePage()),
@@ -115,15 +136,27 @@ class _FoodPageState extends State<FoodPage> {
 
           setState(() => _currentIndex = index);
         },
+
         items: const [
           BottomNavigationBarItem(
-              icon: Icon(Icons.restaurant_menu), label: "อาหาร"),
+              icon: Icon(Icons.restaurant_menu),
+              label: "อาหาร"),
+
           BottomNavigationBarItem(
-              icon: Icon(Icons.local_drink), label: "เครื่องดื่ม"),
+              icon: Icon(Icons.local_drink),
+              label: "เครื่องดื่ม"),
+
           BottomNavigationBarItem(
-              icon: Icon(Icons.shopping_cart), label: "ตะกร้า"),
+              icon: Icon(Icons.shopping_cart),
+              label: "ตะกร้า"),
+
           BottomNavigationBarItem(
-              icon: Icon(Icons.logout), label: "ออกจากระบบ"),
+              icon: Icon(Icons.receipt_long),
+              label: "ประวัติ"),
+
+          BottomNavigationBarItem(
+              icon: Icon(Icons.logout),
+              label: "ออกจากระบบ"),
         ],
       ),
     );
@@ -139,6 +172,7 @@ class _FoodPageState extends State<FoodPage> {
           TextButton(
               onPressed: () => Navigator.pop(context, false),
               child: const Text('ยกเลิก')),
+
           ElevatedButton(
               onPressed: () => Navigator.pop(context, true),
               child: const Text('ออกจากระบบ')),
@@ -149,6 +183,7 @@ class _FoodPageState extends State<FoodPage> {
 }
 
 class _StoreCard extends StatelessWidget {
+
   final String name;
   final String imageUrl;
   final String description;
@@ -163,42 +198,77 @@ class _StoreCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(6),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        decoration: BoxDecoration(
-          color: Colors.grey[300],
-          border: Border.all(color: Colors.black),
-          borderRadius: BorderRadius.circular(6),
-        ),
+
+    return Card(
+      elevation: 5,
+      margin: const EdgeInsets.only(bottom: 18),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (imageUrl.isNotEmpty)
-              ClipRRect(
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(6)),
-                child: Image.network(
-                  imageUrl,
-                  height: 150,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => _imageFallback(),
-                ),
-              )
-            else
-              _imageFallback(),
+
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(18),
+              ),
+              child: imageUrl.isNotEmpty
+                  ? Image.network(
+                      imageUrl,
+                      height: 170,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                    )
+                  : Container(
+                      height: 170,
+                      color: Colors.grey[300],
+                      child: const Center(
+                        child: Icon(Icons.store, size: 60),
+                      ),
+                    ),
+            ),
+
             Padding(
-              padding: const EdgeInsets.symmetric(
-                  vertical: 18, horizontal: 12),
-              child: Text(
-                name,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold),
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+
+                  Row(
+                    children: const [
+                      Icon(Icons.restaurant, color: Colors.orange),
+                      SizedBox(width: 6),
+                    ],
+                  ),
+
+                  const SizedBox(height: 4),
+
+                  Text(
+                    name,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+
+                  const SizedBox(height: 6),
+
+                  if (description.isNotEmpty)
+                    Text(
+                      description,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.grey[700],
+                        fontSize: 14,
+                      ),
+                    ),
+
+                ],
               ),
             ),
           ],
@@ -206,34 +276,42 @@ class _StoreCard extends StatelessWidget {
       ),
     );
   }
-
-  Widget _imageFallback() => Container(
-        height: 150,
-        color: Colors.grey[400],
-        alignment: Alignment.center,
-        child: const Icon(Icons.store, size: 40),
-      );
 }
 
 class _ErrorBox extends StatelessWidget {
+
   final String msg;
+
   const _ErrorBox(this.msg);
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.all(16),
-        child: SelectableText(
-          msg,
-          style: const TextStyle(color: Colors.red),
-        ),
-      );
+  Widget build(BuildContext context) {
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: SelectableText(
+        msg,
+        style: const TextStyle(color: Colors.red),
+      ),
+    );
+  }
 }
 
 class _InfoBox extends StatelessWidget {
+
   final String msg;
+
   const _InfoBox(this.msg);
 
   @override
-  Widget build(BuildContext context) =>
-      Center(child: Text(msg, textAlign: TextAlign.center));
+  Widget build(BuildContext context) {
+
+    return Center(
+      child: Text(
+        msg,
+        style: const TextStyle(fontSize: 16),
+        textAlign: TextAlign.center,
+      ),
+    );
+  }
 }

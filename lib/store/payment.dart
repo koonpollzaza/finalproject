@@ -48,13 +48,9 @@ class _PaymentPageState extends State<PaymentPage> {
       mobile = "66" + mobile.substring(1);
     }
 
-    String qr =
-        format("00", "01") +
+    String qr = format("00", "01") +
         format("01", "11") +
-        format(
-            "29",
-            format("00", "A000000677010111") +
-                format("01", mobile)) +
+        format("29", format("00", "A000000677010111") + format("01", mobile)) +
         format("52", "0000") +
         format("53", "764") +
         format("54", amount.toStringAsFixed(2)) +
@@ -110,8 +106,7 @@ class _PaymentPageState extends State<PaymentPage> {
     setState(() => uploading = true);
 
     try {
-      final ref = FirebaseStorage.instance
-          .ref('slips/${widget.orderId}.jpg');
+      final ref = FirebaseStorage.instance.ref('slips/${widget.orderId}.jpg');
 
       await ref.putFile(slipImage!);
       final url = await ref.getDownloadURL();
@@ -120,7 +115,7 @@ class _PaymentPageState extends State<PaymentPage> {
           .collection('orders')
           .doc(widget.orderId)
           .update({
-        'payment': 'success',
+        'payment': 'pending',
         'slipUrl': url,
       });
 
@@ -203,25 +198,22 @@ class _PaymentPageState extends State<PaymentPage> {
           child: Column(
             children: [
               const Text("สแกนเพื่อชำระเงิน",
-                  style: TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.bold)),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 20),
               QrImageView(data: qrData, size: 240),
               const SizedBox(height: 20),
               Text(
                 "ยอด ${widget.total.toStringAsFixed(2)} บาท",
-                style: const TextStyle(
-                    fontSize: 20, fontWeight: FontWeight.bold),
+                style:
+                    const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 15),
               Text(
                 "เวลาที่เหลือ $minutes:$seconds",
-                style:
-                    const TextStyle(color: Colors.red, fontSize: 18),
+                style: const TextStyle(color: Colors.red, fontSize: 18),
               ),
               const Divider(height: 40),
-              if (slipImage != null)
-                Image.file(slipImage!, height: 180),
+              if (slipImage != null) Image.file(slipImage!, height: 180),
               ElevatedButton(
                 onPressed: pickImage,
                 child: const Text("แนบสลิป"),
@@ -232,8 +224,7 @@ class _PaymentPageState extends State<PaymentPage> {
                 child: ElevatedButton(
                   onPressed: uploading ? null : uploadSlip,
                   child: uploading
-                      ? const CircularProgressIndicator(
-                          color: Colors.white)
+                      ? const CircularProgressIndicator(color: Colors.white)
                       : const Text("ส่งสลิปเพื่อยืนยัน"),
                 ),
               ),

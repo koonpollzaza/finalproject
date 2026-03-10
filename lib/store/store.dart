@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'add_menu.dart';
 import 'history_store.dart';
+import 'select_location_store.dart';
 import '../login.dart';
 
 class StoreHomePage extends StatefulWidget {
@@ -15,7 +16,7 @@ class StoreHomePage extends StatefulWidget {
 }
 
 class _StoreHomePageState extends State<StoreHomePage> {
-  int _currentIndex = 1;
+  int _currentIndex = 0;
 
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? orderListener;
   bool _listenerStarted = false;
@@ -32,7 +33,26 @@ class _StoreHomePageState extends State<StoreHomePage> {
     return snap.docs.first;
   }
 
-  /// 🔔 ฟังออเดอร์
+  /// 🔴 ลบเมนู
+  Future<void> _deleteMenu(DocumentReference docRef) async {
+    try {
+      await docRef.delete();
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("ลบเมนูเรียบร้อย"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("ลบไม่สำเร็จ: $e")),
+      );
+    }
+  }
+
   void listenNewOrders(String storeId) {
     if (_listenerStarted) return;
     _listenerStarted = true;
@@ -53,7 +73,6 @@ class _StoreHomePageState extends State<StoreHomePage> {
             SnackBar(
               content: const Text("🔔 มีออเดอร์ใหม่ชำระเงินแล้ว"),
               backgroundColor: Colors.green,
-              duration: const Duration(seconds: 3),
               action: SnackBarAction(
                 label: "ดู",
                 textColor: Colors.white,
@@ -61,8 +80,7 @@ class _StoreHomePageState extends State<StoreHomePage> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) =>
-                          HistoryStorePage(storeId: storeId), // ✅ ส่ง storeId
+                      builder: (_) => HistoryStorePage(storeId: storeId),
                     ),
                   );
                 },
@@ -91,7 +109,10 @@ class _StoreHomePageState extends State<StoreHomePage> {
           (_) => false,
         );
       });
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
     }
 
     return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>?>(
@@ -99,7 +120,8 @@ class _StoreHomePageState extends State<StoreHomePage> {
       builder: (context, snap) {
         if (!snap.hasData) {
           return const Scaffold(
-              body: Center(child: CircularProgressIndicator()));
+            body: Center(child: CircularProgressIndicator()),
+          );
         }
 
         if (snap.data == null) {
@@ -111,7 +133,7 @@ class _StoreHomePageState extends State<StoreHomePage> {
         final storeDoc = snap.data!;
         final storeRef = storeDoc.reference;
         final storeId = storeRef.id;
-        final storeName = storeDoc.data()!['name'] ?? 'ร้านของฉัน';
+        final storeName = storeDoc.data()?['name'] ?? 'ร้านของฉัน';
 
         WidgetsBinding.instance.addPostFrameCallback((_) {
           listenNewOrders(storeId);
@@ -121,8 +143,12 @@ class _StoreHomePageState extends State<StoreHomePage> {
             storeRef.collection('menus').orderBy('name', descending: false);
 
         return Scaffold(
+          backgroundColor: Colors.grey[100],
+
           appBar: AppBar(
-            title: Text('ร้าน: $storeName'),
+            title: Text(storeName),
+            centerTitle: true,
+            backgroundColor: Colors.orange,
           ),
 
           body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -133,28 +159,102 @@ class _StoreHomePageState extends State<StoreHomePage> {
               }
 
               final docs = menuSnap.data!.docs;
+
               if (docs.isEmpty) {
-                return const Center(child: Text('ยังไม่มีเมนูในร้านนี้'));
+                return const Center(
+                  child: Text(
+                    'ยังไม่มีเมนูในร้าน',
+                    style: TextStyle(fontSize: 18),
+                  ),
+                );
               }
 
               return ListView.builder(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(16),
                 itemCount: docs.length,
                 itemBuilder: (_, i) {
                   final m = docs[i].data();
+
                   final name = m['name'] ?? "";
                   final img = m['imageUrl'] ?? "";
-                  final price =
-                      (m['price'] as num?)?.toDouble() ?? 0.0;
+                  final price = (m['price'] as num?)?.toDouble() ?? 0.0;
 
-                  return Card(
-                    child: ListTile(
-                      leading: img.isNotEmpty
-                          ? Image.network(img, width: 56, height: 56)
-                          : const Icon(Icons.fastfood),
-                      title: Text(name),
-                      subtitle:
-                          Text('ราคา ${price.toStringAsFixed(2)} บาท'),
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 14),
+                    child: Card(
+                      elevation: 4,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.all(12),
+
+                        leading: ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: img.isNotEmpty
+                              ? Image.network(
+                                  img,
+                                  width: 70,
+                                  height: 70,
+                                  fit: BoxFit.cover,
+                                )
+                              : Container(
+                                  width: 70,
+                                  height: 70,
+                                  color: const Color.fromARGB(255, 255, 255, 255),
+                                  child: const Icon(Icons.fastfood),
+                                ),
+                        ),
+
+                        title: Text(
+                          name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                          ),
+                        ),
+
+                        subtitle: Text(
+                          "ราคา ${price.toStringAsFixed(2)} บาท",
+                          style: const TextStyle(
+                            fontSize: 15,
+                            color: Colors.orange,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+
+                        /// 🔴 ปุ่มลบเมนู
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.red),
+                          onPressed: () {
+                            showDialog(
+                              context: context,
+                              builder: (_) => AlertDialog(
+                                title: const Text("ลบเมนู"),
+                                content:
+                                    const Text("คุณต้องการลบเมนูนี้หรือไม่"),
+                                actions: [
+                                  TextButton(
+                                    child: const Text("ยกเลิก"),
+                                    onPressed: () =>
+                                        Navigator.pop(context),
+                                  ),
+                                  TextButton(
+                                    child: const Text(
+                                      "ลบ",
+                                      style: TextStyle(color: Colors.red),
+                                    ),
+                                    onPressed: () {
+                                      Navigator.pop(context);
+                                      _deleteMenu(docs[i].reference);
+                                    },
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
                     ),
                   );
                 },
@@ -164,13 +264,26 @@ class _StoreHomePageState extends State<StoreHomePage> {
 
           bottomNavigationBar: BottomNavigationBar(
             currentIndex: _currentIndex,
+            selectedItemColor: Colors.orange,
+            unselectedItemColor: Colors.orange,
+            type: BottomNavigationBarType.fixed,
             items: const [
               BottomNavigationBarItem(
-                  icon: Icon(Icons.restaurant), label: 'เพิ่มเมนู'),
+                icon: Icon(Icons.add_box),
+                label: 'เพิ่มเมนู',
+              ),
               BottomNavigationBarItem(
-                  icon: Icon(Icons.list), label: 'ประวัติ'),
+                icon: Icon(Icons.history),
+                label: 'ประวัติ',
+              ),
               BottomNavigationBarItem(
-                  icon: Icon(Icons.logout), label: 'ออก'),
+                icon: Icon(Icons.location_on),
+                label: 'ตำแหน่งร้าน',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.logout),
+                label: 'ออก',
+              ),
             ],
             onTap: (index) async {
               setState(() => _currentIndex = index);
@@ -186,13 +299,22 @@ class _StoreHomePageState extends State<StoreHomePage> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) =>
-                        HistoryStorePage(storeId: storeId), // ✅ ส่ง storeId
+                    builder: (_) => HistoryStorePage(storeId: storeId),
                   ),
                 );
               } else if (index == 2) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        SelectLocationStorePage(storeId: storeId),
+                  ),
+                );
+              } else if (index == 3) {
                 await FirebaseAuth.instance.signOut();
+
                 if (!mounted) return;
+
                 Navigator.of(context).pushAndRemoveUntil(
                   MaterialPageRoute(builder: (_) => const LoginPage()),
                   (_) => false,

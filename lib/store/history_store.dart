@@ -11,19 +11,19 @@ class HistoryStorePage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('ประวัติคำสั่งซื้อ'),
-        backgroundColor: Colors.cyan,
+        backgroundColor: Colors.orange,
       ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: (storeId != null && storeId!.isNotEmpty)
-    ? FirebaseFirestore.instance
-        .collection('orders')
-        .where('storeId', isEqualTo: storeId) // ✅ เช็ค storeId ที่ login
-        .orderBy('createdAt', descending: true)
-        .snapshots()
-    : FirebaseFirestore.instance
-        .collection('orders')
-        .orderBy('createdAt', descending: true)
-        .snapshots(),
+            ? FirebaseFirestore.instance
+                .collection('orders')
+                .where('storeId', isEqualTo: storeId)
+                .orderBy('createdAt', descending: true)
+                .snapshots()
+            : FirebaseFirestore.instance
+                .collection('orders')
+                .orderBy('createdAt', descending: true)
+                .snapshots(),
         builder: (context, snap) {
           if (snap.hasError) {
             return Center(child: Text('เกิดข้อผิดพลาด: ${snap.error}'));
@@ -51,11 +51,11 @@ class HistoryStorePage extends StatelessWidget {
                 orderId: d.id,
                 status: (data['status'] ?? 'pending').toString(),
                 riderStatus: (data['riderStatus'] ?? 'pending').toString(),
+                payment: (data['payment'] ?? 'pending').toString(),
                 createdText: _formatTime(data['createdAt']),
                 fullName: (data['recipient']?['fullName'] ?? '').toString(),
                 phone: (data['recipient']?['phone'] ?? '').toString(),
                 address: (data['recipient']?['address'] ?? '').toString(),
-                payment: (data['payment'] ?? '').toString(),
                 slipUrl: (data['slipUrl'] ?? '').toString(),
                 storeIdFilter: storeId,
               );
@@ -83,11 +83,11 @@ class _OrderCard extends StatefulWidget {
     required this.orderId,
     required this.status,
     required this.riderStatus,
+    required this.payment,
     required this.createdText,
     required this.fullName,
     required this.phone,
     required this.address,
-    required this.payment,
     required this.slipUrl,
     required this.storeIdFilter,
   });
@@ -95,11 +95,11 @@ class _OrderCard extends StatefulWidget {
   final String orderId;
   final String status;
   final String riderStatus;
+  final String payment;
   final String createdText;
   final String fullName;
   final String phone;
   final String address;
-  final String payment;
   final String slipUrl;
   final String? storeIdFilter;
 
@@ -110,6 +110,8 @@ class _OrderCard extends StatefulWidget {
 class _OrderCardState extends State<_OrderCard> {
   late String _status;
   late String _riderStatus;
+  late String _payment;
+
   bool _deleting = false;
 
   @override
@@ -117,17 +119,27 @@ class _OrderCardState extends State<_OrderCard> {
     super.initState();
     _status = widget.status.toLowerCase();
     _riderStatus = widget.riderStatus.toLowerCase();
+    _payment = widget.payment.toLowerCase();
   }
 
   /* ================= UPDATE STATUS ================= */
 
-  Future<void> _updateStatus(String newStatus) async {
-    setState(() => _status = newStatus);
+  Future<void> _updateStatus(String value) async {
+    setState(() => _status = value);
 
     await FirebaseFirestore.instance
         .collection('orders')
         .doc(widget.orderId)
-        .update({'status': newStatus});
+        .update({'status': value});
+  }
+
+  Future<void> _updatePayment(String value) async {
+    setState(() => _payment = value);
+
+    await FirebaseFirestore.instance
+        .collection('orders')
+        .doc(widget.orderId)
+        .update({'payment': value});
   }
 
   /* ================= DELETE ORDER ================= */
@@ -145,7 +157,7 @@ class _OrderCardState extends State<_OrderCard> {
 
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (_) => AlertDialog(
         title: const Text('ยืนยันการยกเลิก'),
         content: const Text('ต้องการลบออเดอร์นี้ใช่หรือไม่?'),
         actions: [
@@ -174,23 +186,25 @@ class _OrderCardState extends State<_OrderCard> {
     await orderRef.delete();
   }
 
-  /* ================= STATUS STYLE ================= */
+  /* ================= LABEL ================= */
 
-  Color _statusColor(String value) {
-    return value == 'success' ? Colors.green : Colors.orange;
-  }
+  String _statusLabel(String value) =>
+      value == 'success' ? 'จัดส่งสำเร็จ' : 'รอดำเนินการ';
 
-  String _statusLabel(String value) {
-    return value == 'success' ? 'จัดส่งสำเร็จ' : 'รอดำเนินการ';
-  }
+  String _riderLabel(String value) =>
+      value == 'success' ? 'ไรเดอร์รับงานแล้ว' : 'กำลังหาไรเดอร์';
 
-  Color _riderColor(String value) {
-    return value == 'success' ? Colors.green : Colors.orange;
-  }
+  String _paymentLabel(String value) =>
+      value == 'success' ? 'ชำระเงินแล้ว' : 'ชำระเงินไม่สำเร็จ';
 
-  String _riderLabel(String value) {
-    return value == 'success' ? 'ไรเดอร์รับงานแล้ว' : 'กำลังหาไรเดอร์';
-  }
+  Color _statusColor(String value) =>
+      value == 'success' ? Colors.green : Colors.orange;
+
+  Color _riderColor(String value) =>
+      value == 'success' ? Colors.green : Colors.orange;
+
+  Color _paymentColor(String value) =>
+      value == 'success' ? Colors.green : Colors.red;
 
   void _showImage(String url) {
     showDialog(
@@ -209,9 +223,6 @@ class _OrderCardState extends State<_OrderCard> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: ExpansionTile(
         tilePadding: const EdgeInsets.all(12),
-
-        /* ================= TITLE ================= */
-
         title: Row(
           children: [
             Expanded(
@@ -220,7 +231,6 @@ class _OrderCardState extends State<_OrderCard> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            const SizedBox(width: 2),
             Chip(
               label: Text(
                 _statusLabel(_status),
@@ -230,14 +240,14 @@ class _OrderCardState extends State<_OrderCard> {
             ),
           ],
         ),
-
-        /* ================= BODY ================= */
-
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('เวลา: ${widget.createdText}'),
-            const SizedBox(height: 8),
+
+            const SizedBox(height: 10),
+
+            const Text("สถานะออเดอร์"),
             DropdownButton<String>(
               value: _status,
               isExpanded: true,
@@ -246,12 +256,28 @@ class _OrderCardState extends State<_OrderCard> {
                 DropdownMenuItem(value: 'success', child: Text('จัดส่งสำเร็จ')),
               ],
               onChanged: (value) {
-                if (value != null) {
-                  _updateStatus(value);
-                }
+                if (value != null) _updateStatus(value);
               },
             ),
-            const SizedBox(height: 8),
+
+            const SizedBox(height: 10),
+
+            const Text("สถานะการชำระเงิน"),
+            DropdownButton<String>(
+              value: _payment,
+              isExpanded: true,
+              items: const [
+                DropdownMenuItem(
+                    value: 'pending', child: Text('ชำระเงินไม่สำเร็จ')),
+                DropdownMenuItem(value: 'success', child: Text('ชำระเงินแล้ว')),
+              ],
+              onChanged: (value) {
+                if (value != null) _updatePayment(value);
+              },
+            ),
+
+            const SizedBox(height: 10),
+
             Row(
               children: [
                 const Text('สถานะไรเดอร์ : '),
@@ -265,7 +291,9 @@ class _OrderCardState extends State<_OrderCard> {
                 ),
               ],
             ),
+
             const SizedBox(height: 10),
+
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(

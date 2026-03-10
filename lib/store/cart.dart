@@ -43,15 +43,18 @@ class _CartPageState extends State<CartPage> {
 
   Future<String?> _getStoreName(String storeId) async {
     final doc = await storeRef.doc(storeId).get();
+
     if (doc.exists) {
       return doc.data()?['name'];
     }
+
     return null;
   }
 
   Future<void> _updateQty(
       DocumentReference docRef, int currentQty, int change) async {
     final newQty = currentQty + change;
+
     if (newQty <= 0) {
       await docRef.delete();
     } else {
@@ -77,7 +80,6 @@ class _CartPageState extends State<CartPage> {
         backgroundColor: Colors.cyan,
       ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        // ✅ ดึงเฉพาะ cart ของ user นี้
         stream: cartRef.where('userId', isEqualTo: uid).snapshots(),
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
@@ -94,13 +96,13 @@ class _CartPageState extends State<CartPage> {
               docs.map((d) => d.data()['storeId']?.toString() ?? '').toSet();
 
           final multipleStores = storeIds.length > 1;
+
           final storeId = storeIds.isNotEmpty ? storeIds.first : null;
 
           final total = docs.fold<double>(0, (sum, d) {
             final data = d.data();
             return sum +
-                (data['price'] ?? 0).toDouble() *
-                    (data['qty'] ?? 1).toInt();
+                (data['price'] ?? 0).toDouble() * (data['qty'] ?? 1).toInt();
           });
 
           return Column(
@@ -121,6 +123,7 @@ class _CartPageState extends State<CartPage> {
                             if (!snapshot.hasData) {
                               return const Text("กำลังโหลดชื่อร้าน...");
                             }
+
                             return Text(
                               "ร้าน: ${snapshot.data}",
                               style: const TextStyle(
@@ -149,11 +152,12 @@ class _CartPageState extends State<CartPage> {
                           child: ListTile(
                             title: Text(data['name'] ?? ''),
                             subtitle: Text('ราคา ${data['price']} บาท'),
+
                             leading: IconButton(
-                              icon: const Icon(Icons.delete,
-                                  color: Colors.red),
+                              icon: const Icon(Icons.delete, color: Colors.red),
                               onPressed: () => _deleteItem(doc.reference),
                             ),
+
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -177,6 +181,7 @@ class _CartPageState extends State<CartPage> {
                   ),
                 ),
               ),
+
               _buildSummary(total, docs, multipleStores, storeId),
             ],
           );
@@ -199,6 +204,7 @@ class _CartPageState extends State<CartPage> {
                 validator: (v) =>
                     v == null || v.isEmpty ? 'กรุณากรอกชื่อ' : null,
               ),
+
               TextFormField(
                 controller: _phoneC,
                 decoration: const InputDecoration(labelText: 'เบอร์ติดต่อ'),
@@ -206,6 +212,7 @@ class _CartPageState extends State<CartPage> {
                 validator: (v) =>
                     v == null || v.length < 10 ? 'เบอร์ไม่ถูกต้อง' : null,
               ),
+
               if (_paymentMethod == 'payment')
                 TextFormField(
                   controller: _addressC,
@@ -222,11 +229,13 @@ class _CartPageState extends State<CartPage> {
                     return null;
                   },
                 ),
+
               TextFormField(
                 controller: _descriptionC,
                 decoration:
                     const InputDecoration(labelText: 'รายละเอียดเพิ่มเติม'),
               ),
+
               RadioListTile<String>(
                 title: const Text('จัดส่งถึงบ้าน'),
                 value: 'payment',
@@ -237,6 +246,7 @@ class _CartPageState extends State<CartPage> {
                   });
                 },
               ),
+
               RadioListTile<String>(
                 title: const Text('รับอาหารที่ร้าน'),
                 value: 'pickup',
@@ -269,15 +279,18 @@ class _CartPageState extends State<CartPage> {
           Row(
             children: [
               const Expanded(
-                child: Text('รวมทั้งหมด',
-                    style: TextStyle(fontSize: 18)),
+                child: Text('รวมทั้งหมด', style: TextStyle(fontSize: 18)),
               ),
-              Text('${total.toStringAsFixed(2)} บาท',
-                  style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.bold)),
+              Text(
+                '${total.toStringAsFixed(2)} บาท',
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
             ],
           ),
+
           const SizedBox(height: 10),
+
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
@@ -315,11 +328,10 @@ class _CartPageState extends State<CartPage> {
       List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
       double total,
       String? storeId) async {
-
     final db = FirebaseFirestore.instance;
 
     final Map<String, dynamic> orderData = {
-      'userId': uid, // ✅ เก็บ userId ใน order
+      'userId': uid,
       'fullname': _fullNameC.text.trim(),
       'phone': _phoneC.text.trim(),
       'description': _descriptionC.text.trim(),
@@ -343,10 +355,12 @@ class _CartPageState extends State<CartPage> {
     final orderRef = await db.collection('orders').add(orderData);
 
     final batch = db.batch();
+
     for (final d in docs) {
       batch.set(orderRef.collection('items').doc(), d.data());
       batch.delete(d.reference);
     }
+
     await batch.commit();
 
     if (!mounted) return;
@@ -355,8 +369,7 @@ class _CartPageState extends State<CartPage> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) =>
-              PaymentPage(orderId: orderRef.id, total: total),
+          builder: (_) => PaymentPage(orderId: orderRef.id, total: total),
         ),
       );
     } else {

@@ -31,8 +31,6 @@ class _HomePageState extends State<HomePage> {
       final storage = FirebaseStorage.instance;
 
       final files = [
-        'image_store/KAMU-01.jpg',
-        'image_store/KFC.png',
         'image_store/Logo1.jpg',
         'image_store/Logo1.png',
       ];
@@ -57,67 +55,159 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  void _openStore(int index) {
+    if (index == 0) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const FoodPage()),
+      );
+    } else if (index == 1) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const DrinkPage()),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.grey[100],
+
       appBar: AppBar(
-        title: const Text("หน้าหลัก"),
-        backgroundColor: Colors.cyan[300],
+        title: const Text(
+          "Food Delivery",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: Colors.cyan,
         centerTitle: true,
+        elevation: 0,
       ),
+
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
-          : Padding(
-              padding: const EdgeInsets.all(16),
+          : SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'ร้านค้ายอดฮิต',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
+
+                  /// Banner
+                  Container(
+                    height: 150,
+                    width: double.infinity,
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Colors.cyan, Colors.blueAccent],
+                      ),
+                    ),
+                    child: const Center(
+                      child: Text(
+                        "สั่งอาหารง่ายๆ\nส่งถึงหน้าบ้าน",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  Expanded(
+
+                  const SizedBox(height: 20),
+
+                  /// หัวข้อ
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      'ร้านค้ายอดฮิต',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  /// ร้านค้า
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
                       itemCount: imageUrls.length,
                       gridDelegate:
                           const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 2,
-                        crossAxisSpacing: 12,
-                        mainAxisSpacing: 12,
-                        childAspectRatio: 1,
+                        crossAxisSpacing: 14,
+                        mainAxisSpacing: 14,
+                        childAspectRatio: 0.9,
                       ),
                       itemBuilder: (context, index) {
-                        return Card(
-                          elevation: 4,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Image.network(
-                              imageUrls[index],
-                              fit: BoxFit.contain,
-                              errorBuilder: (_, __, ___) =>
-                                  const Icon(Icons.image_not_supported),
+                        return InkWell(
+                          onTap: () => _openStore(index),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black12,
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 3),
+                                )
+                              ],
+                            ),
+                            child: Column(
+                              children: [
+
+                                /// รูปร้าน
+                                Expanded(
+                                  child: ClipRRect(
+                                    borderRadius: const BorderRadius.vertical(
+                                        top: Radius.circular(16)),
+                                    child: Image.network(
+                                      imageUrls[index],
+                                      width: double.infinity,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) =>
+                                          const Icon(Icons.image_not_supported),
+                                    ),
+                                  ),
+                                ),
+
+                                /// ชื่อร้าน
+                                Padding(
+                                  padding: const EdgeInsets.all(10),
+                                  child: Text(
+                                    index == 0
+                                        ? "ร้านอาหาร"
+                                        : "ร้านเครื่องดื่ม",
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         );
                       },
                     ),
                   ),
+
+                  const SizedBox(height: 20),
                 ],
               ),
             ),
+
+      /// Bottom Navigation
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
-        backgroundColor: Colors.cyan[200],
+        backgroundColor: Colors.white,
         currentIndex: _currentIndex,
-        selectedItemColor: Colors.black87,
-        unselectedItemColor: Colors.black54,
+        selectedItemColor: Colors.cyan,
+        unselectedItemColor: Colors.grey,
         onTap: (index) {
           setState(() => _currentIndex = index);
 
@@ -137,7 +227,6 @@ class _HomePageState extends State<HomePage> {
               MaterialPageRoute(builder: (_) => const CartPage()),
             );
           } else if (index == 3) {
-            // ✅ ไปหน้าประวัติคำสั่งซื้อ
             Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const HistoryPage()),
@@ -160,7 +249,7 @@ class _HomePageState extends State<HomePage> {
             label: "ตะกร้า",
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.receipt_long), // ✅ เพิ่ม
+            icon: Icon(Icons.receipt_long),
             label: "ประวัติ",
           ),
           BottomNavigationBarItem(
