@@ -115,7 +115,6 @@ class _CartPageState extends State<CartPage> {
                     children: [
                       _buildForm(),
                       const SizedBox(height: 10),
-
                       if (storeId != null)
                         FutureBuilder<String?>(
                           future: _getStoreName(storeId),
@@ -133,17 +132,13 @@ class _CartPageState extends State<CartPage> {
                             );
                           },
                         ),
-
                       const SizedBox(height: 10),
-
                       if (multipleStores)
                         const Text(
                           'คุณสามารถสั่งได้ครั้งละ 1 ร้านเท่านั้น',
                           style: TextStyle(color: Colors.red),
                         ),
-
                       const SizedBox(height: 10),
-
                       ...docs.map((doc) {
                         final data = doc.data();
                         final qty = data['qty'] ?? 1;
@@ -152,12 +147,10 @@ class _CartPageState extends State<CartPage> {
                           child: ListTile(
                             title: Text(data['name'] ?? ''),
                             subtitle: Text('ราคา ${data['price']} บาท'),
-
                             leading: IconButton(
                               icon: const Icon(Icons.delete, color: Colors.red),
                               onPressed: () => _deleteItem(doc.reference),
                             ),
-
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -181,7 +174,6 @@ class _CartPageState extends State<CartPage> {
                   ),
                 ),
               ),
-
               _buildSummary(total, docs, multipleStores, storeId),
             ],
           );
@@ -204,7 +196,6 @@ class _CartPageState extends State<CartPage> {
                 validator: (v) =>
                     v == null || v.isEmpty ? 'กรุณากรอกชื่อ' : null,
               ),
-
               TextFormField(
                 controller: _phoneC,
                 decoration: const InputDecoration(labelText: 'เบอร์ติดต่อ'),
@@ -212,7 +203,6 @@ class _CartPageState extends State<CartPage> {
                 validator: (v) =>
                     v == null || v.length < 10 ? 'เบอร์ไม่ถูกต้อง' : null,
               ),
-
               if (_paymentMethod == 'payment')
                 TextFormField(
                   controller: _addressC,
@@ -229,13 +219,11 @@ class _CartPageState extends State<CartPage> {
                     return null;
                   },
                 ),
-
               TextFormField(
                 controller: _descriptionC,
                 decoration:
                     const InputDecoration(labelText: 'รายละเอียดเพิ่มเติม'),
               ),
-
               RadioListTile<String>(
                 title: const Text('จัดส่งถึงบ้าน'),
                 value: 'payment',
@@ -246,7 +234,6 @@ class _CartPageState extends State<CartPage> {
                   });
                 },
               ),
-
               RadioListTile<String>(
                 title: const Text('รับอาหารที่ร้าน'),
                 value: 'pickup',
@@ -288,9 +275,7 @@ class _CartPageState extends State<CartPage> {
               ),
             ],
           ),
-
           const SizedBox(height: 10),
-
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(

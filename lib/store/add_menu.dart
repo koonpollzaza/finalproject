@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
-import 'dart:io';
+import 'dart:typed_data';
+import 'package:image/image.dart' as img;
 
 class AddMenuPage extends StatefulWidget {
   final DocumentReference<Map<String, dynamic>> storeRef;
@@ -18,6 +19,7 @@ class _AddMenuPageState extends State<AddMenuPage> {
   final _priceCtl = TextEditingController();
 
   XFile? _picked;
+  Uint8List? _imageBytes; // ✅ เก็บ bytes
   bool _saving = false;
 
   @override
@@ -27,20 +29,41 @@ class _AddMenuPageState extends State<AddMenuPage> {
     super.dispose();
   }
 
+  /// เลือกรูป
   Future<void> _pickImage() async {
     final picker = ImagePicker();
     final image =
         await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
 
     if (image != null) {
-      setState(() => _picked = image);
+      final bytes = await image.readAsBytes(); // ✅ อ่านทันที
+
+      setState(() {
+        _picked = image;
+        _imageBytes = bytes; // ✅ เก็บไว้ใช้
+      });
     }
+  }
+
+  /// 🔥 resize รูป
+  Future<Uint8List> _resizeImage(Uint8List data) async {
+    final original = img.decodeImage(data);
+    if (original == null) return data;
+
+    final resized = img.copyResize(
+      original,
+      width: 800,
+    );
+
+    return Uint8List.fromList(
+      img.encodeJpg(resized, quality: 80),
+    );
   }
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
-    if (_picked == null) {
+    if (_imageBytes == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('กรุณาเลือกรูปเมนู')),
       );
@@ -55,8 +78,6 @@ class _AddMenuPageState extends State<AddMenuPage> {
 
       final newDoc = widget.storeRef.collection('menus').doc();
 
-      final file = File(_picked!.path);
-
       final storageRef = FirebaseStorage.instance
           .ref()
           .child('stores')
@@ -64,10 +85,18 @@ class _AddMenuPageState extends State<AddMenuPage> {
           .child('menus')
           .child('${newDoc.id}.jpg');
 
-      await storageRef.putFile(file);
+      /// ✅ resize ก่อน upload
+      final resizedBytes = await _resizeImage(_imageBytes!);
+
+      /// ✅ upload
+      await storageRef.putData(
+        resizedBytes,
+        SettableMetadata(contentType: 'image/jpeg'),
+      );
 
       final imageUrl = await storageRef.getDownloadURL();
 
+      /// ✅ save firestore
       await newDoc.set({
         'name': name,
         'price': price,
@@ -103,13 +132,11 @@ class _AddMenuPageState extends State<AddMenuPage> {
 
     return Scaffold(
       backgroundColor: Colors.grey[100],
-
       appBar: AppBar(
         title: const Text("เพิ่มเมนูใหม่"),
         centerTitle: true,
         backgroundColor: Colors.orange,
       ),
-
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -126,14 +153,14 @@ class _AddMenuPageState extends State<AddMenuPage> {
                 child: Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16),
-                    image: _picked != null
+                    image: _imageBytes != null
                         ? DecorationImage(
-                            image: FileImage(File(_picked!.path)),
+                            image: MemoryImage(_imageBytes!),
                             fit: BoxFit.cover,
                           )
                         : null,
                   ),
-                  child: _picked == null
+                  child: _imageBytes == null
                       ? const Center(
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
@@ -141,10 +168,7 @@ class _AddMenuPageState extends State<AddMenuPage> {
                               Icon(Icons.add_a_photo,
                                   size: 40, color: Colors.grey),
                               SizedBox(height: 10),
-                              Text(
-                                "แตะเพื่อเลือกรูปเมนู",
-                                style: TextStyle(fontSize: 16),
-                              ),
+                              Text("แตะเพื่อเลือกรูปเมนู"),
                             ],
                           ),
                         )
@@ -172,9 +196,7 @@ class _AddMenuPageState extends State<AddMenuPage> {
                   validator: (v) =>
                       (v == null || v.trim().isEmpty) ? "กรอกชื่อเมนู" : null,
                 ),
-
                 const SizedBox(height: 16),
-
                 TextFormField(
                   controller: _priceCtl,
                   keyboardType:
@@ -192,7 +214,6 @@ class _AddMenuPageState extends State<AddMenuPage> {
                     return null;
                   },
                 ),
-
                 const SizedBox(height: 30),
 
                 /// ปุ่มบันทึก
@@ -212,13 +233,9 @@ class _AddMenuPageState extends State<AddMenuPage> {
                         : const Icon(Icons.save),
                     label: Text(
                       _saving ? "กำลังบันทึก..." : "บันทึกเมนู",
-                      style: const TextStyle(fontSize: 16),
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.orange,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
                     ),
                     onPressed: _saving ? null : _save,
                   ),

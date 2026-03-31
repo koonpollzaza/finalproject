@@ -53,9 +53,11 @@ class HistoryStorePage extends StatelessWidget {
                 riderStatus: (data['riderStatus'] ?? 'pending').toString(),
                 payment: (data['payment'] ?? 'pending').toString(),
                 createdText: _formatTime(data['createdAt']),
-                fullName: (data['recipient']?['fullName'] ?? '').toString(),
-                phone: (data['recipient']?['phone'] ?? '').toString(),
-                address: (data['recipient']?['address'] ?? '').toString(),
+                fullName:
+                    (data['fullname'] ?? 'ไม่ระบุ').toString(),
+                phone: (data['phone'] ?? '-').toString(),
+                address: (data['address'] ?? '-').toString(),
+                locationText: (data['location'] ?? '').toString(),
                 slipUrl: (data['slipUrl'] ?? '').toString(),
                 storeIdFilter: storeId,
               );
@@ -88,6 +90,7 @@ class _OrderCard extends StatefulWidget {
     required this.fullName,
     required this.phone,
     required this.address,
+    required this.locationText,
     required this.slipUrl,
     required this.storeIdFilter,
   });
@@ -100,6 +103,7 @@ class _OrderCard extends StatefulWidget {
   final String fullName;
   final String phone;
   final String address;
+  final String locationText;
   final String slipUrl;
   final String? storeIdFilter;
 
@@ -122,8 +126,6 @@ class _OrderCardState extends State<_OrderCard> {
     _payment = widget.payment.toLowerCase();
   }
 
-  /* ================= UPDATE STATUS ================= */
-
   Future<void> _updateStatus(String value) async {
     setState(() => _status = value);
 
@@ -141,8 +143,6 @@ class _OrderCardState extends State<_OrderCard> {
         .doc(widget.orderId)
         .update({'payment': value});
   }
-
-  /* ================= DELETE ORDER ================= */
 
   Future<void> _deleteOrder() async {
     if (_riderStatus == 'success') {
@@ -186,25 +186,17 @@ class _OrderCardState extends State<_OrderCard> {
     await orderRef.delete();
   }
 
-  /* ================= LABEL ================= */
-
   String _statusLabel(String value) =>
       value == 'success' ? 'จัดส่งสำเร็จ' : 'รอดำเนินการ';
 
   String _riderLabel(String value) =>
       value == 'success' ? 'ไรเดอร์รับงานแล้ว' : 'กำลังหาไรเดอร์';
 
-  String _paymentLabel(String value) =>
-      value == 'success' ? 'ชำระเงินแล้ว' : 'ชำระเงินไม่สำเร็จ';
-
   Color _statusColor(String value) =>
       value == 'success' ? Colors.green : Colors.orange;
 
   Color _riderColor(String value) =>
       value == 'success' ? Colors.green : Colors.orange;
-
-  Color _paymentColor(String value) =>
-      value == 'success' ? Colors.green : Colors.red;
 
   void _showImage(String url) {
     showDialog(
@@ -244,6 +236,56 @@ class _OrderCardState extends State<_OrderCard> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('เวลา: ${widget.createdText}'),
+
+            const SizedBox(height: 10),
+
+            /// 👤 ลูกค้า
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.person, size: 18),
+                      const SizedBox(width: 6),
+                      Text('ลูกค้า: ${widget.fullName}'),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      const Icon(Icons.phone, size: 18),
+                      const SizedBox(width: 6),
+                      Text('เบอร์: ${widget.phone}'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 10),
+
+            /// 📍 location (จาก Firestore)
+            if (widget.locationText.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.location_on, color: Colors.red),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(widget.locationText)),
+                  ],
+                ),
+              ),
 
             const SizedBox(height: 10),
 
@@ -375,13 +417,9 @@ class _OrderItemsList extends StatelessWidget {
             final total = price * qty;
 
             return ListTile(
-              title: Text(name,
-                  style: const TextStyle(fontWeight: FontWeight.w600)),
+              title: Text(name),
               subtitle: Text('฿${price.toStringAsFixed(2)} x $qty'),
-              trailing: Text(
-                '฿${total.toStringAsFixed(2)}',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
+              trailing: Text('฿${total.toStringAsFixed(2)}'),
             );
           }).toList(),
         );
