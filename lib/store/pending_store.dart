@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-class HistoryStorePage extends StatelessWidget {
-  const HistoryStorePage({super.key, this.storeId});
+class PendingStorePage extends StatelessWidget {
+  const PendingStorePage({super.key, this.storeId});
 
   final String? storeId;
 
@@ -10,7 +10,7 @@ class HistoryStorePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ประวัติคำสั่งซื้อ'),
+        title: const Text('ออเดอร์รอดำเนินการ'),
         backgroundColor: Colors.orange,
       ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -43,12 +43,12 @@ class HistoryStorePage extends StatelessWidget {
             final isPickup = location == 'รับอาหารที่ร้าน';
 
             if (isPickup) {
-              return status == 'success' && payment == 'success';
+              return status == 'pending' || payment == 'pending';
             }
 
-            return status == 'success' &&
-                payment == 'success' &&
-                riderStatus == 'success';
+            return status == 'pending' ||
+                payment == 'pending' ||
+                riderStatus == 'pending';
           }).toList();
 
           docs.sort((a, b) {
@@ -62,7 +62,7 @@ class HistoryStorePage extends StatelessWidget {
           });
 
           if (docs.isEmpty) {
-            return const Center(child: Text('ยังไม่มีประวัติคำสั่งซื้อ'));
+            return const Center(child: Text('ยังไม่มีออเดอร์รอดำเนินการ'));
           }
 
           return ListView.separated(
@@ -84,8 +84,6 @@ class HistoryStorePage extends StatelessWidget {
                 address: (data['address'] ?? '-').toString(),
                 locationText: (data['location'] ?? '').toString(),
                 slipUrl: (data['slipUrl'] ?? '').toString(),
-                deliveryImageUrl:
-                    (data['deliveryImageUrl'] ?? '').toString(),
                 storeIdFilter: storeId,
               );
             },
@@ -107,7 +105,7 @@ class HistoryStorePage extends StatelessWidget {
 
 /* ================= ORDER CARD ================= */
 
-class _OrderCard extends StatelessWidget {
+class _OrderCard extends StatefulWidget {
   const _OrderCard({
     required this.orderId,
     required this.status,
@@ -119,7 +117,6 @@ class _OrderCard extends StatelessWidget {
     required this.address,
     required this.locationText,
     required this.slipUrl,
-    required this.deliveryImageUrl,
     required this.storeIdFilter,
   });
 
@@ -133,91 +130,149 @@ class _OrderCard extends StatelessWidget {
   final String address;
   final String locationText;
   final String slipUrl;
-  final String deliveryImageUrl;
   final String? storeIdFilter;
 
-  bool get _isPickup => locationText.trim() == 'รับอาหารที่ร้าน';
+  @override
+  State<_OrderCard> createState() => _OrderCardState();
+}
+
+class _OrderCardState extends State<_OrderCard> {
+  late String _status;
+  late String _riderStatus;
+  late String _payment;
+
+  bool _deleting = false;
+
+  bool get _isPickup => widget.locationText.trim() == 'รับอาหารที่ร้าน';
+
+  @override
+  void initState() {
+    super.initState();
+    _status = widget.status.toLowerCase();
+    _riderStatus = widget.riderStatus.toLowerCase();
+    _payment = widget.payment.toLowerCase();
+  }
+
+  Future<void> _updateStatus(String value) async {
+    try {
+      setState(() => _status = value);
+
+      await FirebaseFirestore.instance
+          .collection('orders')
+          .doc(widget.orderId)
+          .update({'status': value});
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('แก้ไขสถานะออเดอร์ไม่สำเร็จ: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _updatePayment(String value) async {
+    try {
+      setState(() => _payment = value);
+
+      await FirebaseFirestore.instance
+          .collection('orders')
+          .doc(widget.orderId)
+          .update({'payment': value});
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('แก้ไขสถานะการชำระเงินไม่สำเร็จ: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _deleteOrder() async {
+    if (!_isPickup && _riderStatus == 'success') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('ไม่สามารถยกเลิกได้ ไรเดอร์รับงานแล้ว'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('ยืนยันการยกเลิก'),
+        content: const Text('ต้องการลบออเดอร์นี้ใช่หรือไม่?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('ไม่'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('ยืนยัน'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _deleting = true);
+
+    try {
+      final orderRef =
+          FirebaseFirestore.instance.collection('orders').doc(widget.orderId);
+
+      final items = await orderRef.collection('items').get();
+      for (final doc in items.docs) {
+        await doc.reference.delete();
+      }
+
+      await orderRef.delete();
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() => _deleting = false);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('ลบออเดอร์ไม่สำเร็จ: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
 
   String _statusLabel(String value) =>
-      value.toLowerCase() == 'success' ? 'จัดส่งสำเร็จ' : 'รอดำเนินการ';
-
-  String _paymentLabel(String value) =>
-      value.toLowerCase() == 'success' ? 'ชำระเงินแล้ว' : 'ชำระเงินไม่สำเร็จ';
+      value == 'success' ? 'จัดส่งสำเร็จ' : 'รอดำเนินการ';
 
   String _riderLabel(String value) =>
-      value.toLowerCase() == 'success' ? 'ไรเดอร์รับงานแล้ว' : 'กำลังหาไรเดอร์';
+      value == 'success' ? 'ไรเดอร์รับงานแล้ว' : 'กำลังหาไรเดอร์';
 
   Color _statusColor(String value) =>
-      value.toLowerCase() == 'success' ? Colors.green : Colors.orange;
-
-  Color _paymentColor(String value) =>
-      value.toLowerCase() == 'success' ? Colors.green : Colors.orange;
+      value == 'success' ? Colors.green : Colors.orange;
 
   Color _riderColor(String value) =>
-      value.toLowerCase() == 'success' ? Colors.green : Colors.orange;
+      value == 'success' ? Colors.green : Colors.orange;
 
-  void _showImage(BuildContext context, String url) {
+  void _showImage(String url) {
     showDialog(
       context: context,
       builder: (_) => Dialog(
         child: InteractiveViewer(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.network(
-              url,
-              errorBuilder: (_, __, ___) => Container(
-                padding: const EdgeInsets.all(20),
-                alignment: Alignment.center,
-                child: const Text('โหลดรูปไม่สำเร็จ'),
-              ),
+          child: Image.network(
+            url,
+            errorBuilder: (_, __, ___) => const Padding(
+              padding: EdgeInsets.all(20),
+              child: Text('โหลดรูปภาพไม่สำเร็จ'),
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildImageSection({
-    required BuildContext context,
-    required String title,
-    required String imageUrl,
-    required String errorText,
-  }) {
-    if (imageUrl.isEmpty) return const SizedBox.shrink();
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
-          GestureDetector(
-            onTap: () => _showImage(context, imageUrl),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.network(
-                imageUrl,
-                height: 200,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
-                  height: 200,
-                  width: double.infinity,
-                  color: Colors.grey[300],
-                  alignment: Alignment.center,
-                  child: Text(errorText),
-                ),
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -232,24 +287,23 @@ class _OrderCard extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                'Order: $orderId',
+                'Order: ${widget.orderId}',
                 overflow: TextOverflow.ellipsis,
               ),
             ),
             Chip(
               label: Text(
-                _statusLabel(status),
+                _statusLabel(_status),
                 style: const TextStyle(color: Colors.white),
               ),
-              backgroundColor: _statusColor(status),
+              backgroundColor: _statusColor(_status),
             ),
           ],
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('เวลา: $createdText'),
-
+            Text('เวลา: ${widget.createdText}'),
             const SizedBox(height: 10),
 
             Container(
@@ -265,7 +319,7 @@ class _OrderCard extends StatelessWidget {
                     children: [
                       const Icon(Icons.person, size: 18),
                       const SizedBox(width: 6),
-                      Expanded(child: Text('ลูกค้า: $fullName')),
+                      Expanded(child: Text('ลูกค้า: ${widget.fullName}')),
                     ],
                   ),
                   const SizedBox(height: 6),
@@ -273,7 +327,7 @@ class _OrderCard extends StatelessWidget {
                     children: [
                       const Icon(Icons.phone, size: 18),
                       const SizedBox(width: 6),
-                      Expanded(child: Text('เบอร์: $phone')),
+                      Expanded(child: Text('เบอร์: ${widget.phone}')),
                     ],
                   ),
                   const SizedBox(height: 6),
@@ -282,7 +336,7 @@ class _OrderCard extends StatelessWidget {
                     children: [
                       const Icon(Icons.home, size: 18),
                       const SizedBox(width: 6),
-                      Expanded(child: Text('ที่อยู่: $address')),
+                      Expanded(child: Text('ที่อยู่: ${widget.address}')),
                     ],
                   ),
                 ],
@@ -291,7 +345,7 @@ class _OrderCard extends StatelessWidget {
 
             const SizedBox(height: 10),
 
-            if (locationText.isNotEmpty)
+            if (widget.locationText.isNotEmpty)
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
@@ -302,64 +356,110 @@ class _OrderCard extends StatelessWidget {
                   children: [
                     const Icon(Icons.location_on, color: Colors.red),
                     const SizedBox(width: 8),
-                    Expanded(child: Text(locationText)),
+                    Expanded(child: Text(widget.locationText)),
                   ],
                 ),
               ),
 
             const SizedBox(height: 10),
 
-            Row(
-              children: [
-                const Text('สถานะการชำระเงิน : '),
-                const SizedBox(width: 6),
-                Chip(
-                  label: Text(
-                    _paymentLabel(payment),
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                  backgroundColor: _paymentColor(payment),
-                ),
+            const Text("สถานะออเดอร์"),
+            DropdownButton<String>(
+              value: _status,
+              isExpanded: true,
+              items: const [
+                DropdownMenuItem(value: 'pending', child: Text('รอดำเนินการ')),
+                DropdownMenuItem(value: 'success', child: Text('จัดส่งสำเร็จ')),
               ],
+              onChanged: (value) {
+                if (value != null) _updateStatus(value);
+              },
+            ),
+
+            const SizedBox(height: 10),
+
+            const Text("สถานะการชำระเงิน"),
+            DropdownButton<String>(
+              value: _payment,
+              isExpanded: true,
+              items: const [
+                DropdownMenuItem(
+                  value: 'pending',
+                  child: Text('ชำระเงินไม่สำเร็จ'),
+                ),
+                DropdownMenuItem(value: 'success', child: Text('ชำระเงินแล้ว')),
+              ],
+              onChanged: (value) {
+                if (value != null) _updatePayment(value);
+              },
             ),
 
             if (!_isPickup) ...[
               const SizedBox(height: 10),
               Row(
                 children: [
-                  const Text('สถานะไรเดอร์ : '),
+                  const Text(
+                    'สถานะไรเดอร์ : ',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
                   const SizedBox(width: 6),
                   Chip(
                     label: Text(
-                      _riderLabel(riderStatus),
+                      _riderLabel(_riderStatus),
                       style: const TextStyle(color: Colors.white),
                     ),
-                    backgroundColor: _riderColor(riderStatus),
+                    backgroundColor: _riderColor(_riderStatus),
                   ),
                 ],
               ),
             ],
+
+            const SizedBox(height: 10),
+
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: (!_isPickup && _riderStatus == 'success') || _deleting
+                    ? null
+                    : _deleteOrder,
+                icon: const Icon(Icons.delete),
+                label: const Text('ยกเลิกออเดอร์'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 10),
           ],
         ),
         children: [
-          _buildImageSection(
-            context: context,
-            title: 'หลักฐานการโอนเงิน',
-            imageUrl: slipUrl,
-            errorText: 'โหลดรูปหลักฐานการโอนเงินไม่สำเร็จ',
-          ),
-
-          if (!_isPickup)
-            _buildImageSection(
-              context: context,
-              title: 'หลักฐานการจัดส่ง',
-              imageUrl: deliveryImageUrl,
-              errorText: 'โหลดรูปหลักฐานการจัดส่งไม่สำเร็จ',
+          if (widget.slipUrl.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: GestureDetector(
+                onTap: () => _showImage(widget.slipUrl),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.network(
+                    widget.slipUrl,
+                    height: 200,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      height: 200,
+                      width: double.infinity,
+                      color: Colors.grey[300],
+                      alignment: Alignment.center,
+                      child: const Text('โหลดรูปสลิปไม่สำเร็จ'),
+                    ),
+                  ),
+                ),
+              ),
             ),
-
           _OrderItemsList(
-            orderId: orderId,
-            storeIdFilter: storeIdFilter,
+            orderId: widget.orderId,
+            storeIdFilter: widget.storeIdFilter,
           ),
         ],
       ),

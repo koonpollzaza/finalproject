@@ -4,6 +4,7 @@ import '../home.dart';
 import 'drink.dart';
 import 'cart.dart';
 import 'menu_food.dart';
+import 'package:finalproject/login.dart';
 import 'package:finalproject/history.dart';
 
 class FoodPage extends StatefulWidget {
@@ -16,6 +17,7 @@ class FoodPage extends StatefulWidget {
 class _FoodPageState extends State<FoodPage> {
   int _currentIndex = 0;
 
+  // ดึงร้านทั้งหมดที่ผ่านเงื่อนไขหลักก่อน
   Query<Map<String, dynamic>> get _query => FirebaseFirestore.instance
       .collection('stores')
       .where('shopType', isEqualTo: 'food')
@@ -26,7 +28,6 @@ class _FoodPageState extends State<FoodPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[100],
-
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.cyan,
@@ -36,7 +37,6 @@ class _FoodPageState extends State<FoodPage> {
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
-
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: _query.snapshots(),
         builder: (context, snap) {
@@ -51,7 +51,7 @@ class _FoodPageState extends State<FoodPage> {
           final docs = snap.data?.docs ?? [];
 
           if (docs.isEmpty) {
-            return const _InfoBox('ยังไม่มีร้านที่ได้รับการอนุมัติ');
+            return const _InfoBox('ยังไม่มีร้านอาหารที่ได้รับการอนุมัติ');
           }
 
           return ListView.builder(
@@ -64,30 +64,39 @@ class _FoodPageState extends State<FoodPage> {
               final name = (d['name'] ?? '') as String;
               final imageUrl = (d['imageUrl'] ?? '') as String? ?? '';
               final desc = (d['description'] ?? '') as String? ?? '';
+              final isOpen = (d['isOpen'] ?? false) == true;
 
               return _StoreCard(
                 name: name.isEmpty ? '(ไม่มีชื่อร้าน)' : name,
                 imageUrl: imageUrl,
                 description: desc,
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => StoreDetailPage(
-                        id: id,
-                        name: name,
-                        imageUrl: imageUrl,
-                        description: desc,
-                      ),
-                    ),
-                  );
-                },
+                isOpen: isOpen,
+                onTap: isOpen
+                    ? () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => StoreDetailPage(
+                              id: id,
+                              name: name,
+                              imageUrl: imageUrl,
+                              description: desc,
+                            ),
+                          ),
+                        );
+                      }
+                    : () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('ร้านนี้ปิดอยู่ ยังไม่สามารถเข้าได้'),
+                          ),
+                        );
+                      },
               );
             },
           );
         },
       ),
-
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
         backgroundColor: Colors.white,
@@ -102,23 +111,17 @@ class _FoodPageState extends State<FoodPage> {
               context,
               MaterialPageRoute(builder: (_) => const DrinkPage()),
             );
-          }
-
-          else if (index == 2) {
+          } else if (index == 2) {
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(builder: (_) => const CartPage()),
             );
-          }
-
-          else if (index == 3) {
+          } else if (index == 3) {
             Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const HistoryPage()),
             );
-          }
-
-          else if (index == 4) {
+          } else if (index == 4) {
             final ok = await _confirmLogout(context);
 
             if (ok == true && context.mounted) {
@@ -126,37 +129,37 @@ class _FoodPageState extends State<FoodPage> {
                 const SnackBar(content: Text('ออกจากระบบเรียบร้อย')),
               );
 
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (_) => const HomePage()),
-                (route) => false,
+            Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => const LoginPage()), 
+            (route) => false,
               );
             }
           }
 
           setState(() => _currentIndex = index);
         },
-
         items: const [
           BottomNavigationBarItem(
-              icon: Icon(Icons.restaurant_menu),
-              label: "อาหาร"),
-
+            icon: Icon(Icons.restaurant_menu),
+            label: "อาหาร",
+          ),
           BottomNavigationBarItem(
-              icon: Icon(Icons.local_drink),
-              label: "เครื่องดื่ม"),
-
+            icon: Icon(Icons.local_drink),
+            label: "เครื่องดื่ม",
+          ),
           BottomNavigationBarItem(
-              icon: Icon(Icons.shopping_cart),
-              label: "ตะกร้า"),
-
+            icon: Icon(Icons.shopping_cart),
+            label: "ตะกร้า",
+          ),
           BottomNavigationBarItem(
-              icon: Icon(Icons.receipt_long),
-              label: "ประวัติ"),
-
+            icon: Icon(Icons.receipt_long),
+            label: "ประวัติ",
+          ),
           BottomNavigationBarItem(
-              icon: Icon(Icons.logout),
-              label: "ออกจากระบบ"),
+            icon: Icon(Icons.logout),
+            label: "ออกจากระบบ",
+          ),
         ],
       ),
     );
@@ -170,12 +173,13 @@ class _FoodPageState extends State<FoodPage> {
         content: const Text('คุณต้องการออกจากระบบหรือไม่?'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('ยกเลิก')),
-
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('ยกเลิก'),
+          ),
           ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('ออกจากระบบ')),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('ออกจากระบบ'),
+          ),
         ],
       ),
     );
@@ -183,95 +187,158 @@ class _FoodPageState extends State<FoodPage> {
 }
 
 class _StoreCard extends StatelessWidget {
-
   final String name;
   final String imageUrl;
   final String description;
+  final bool isOpen;
   final VoidCallback? onTap;
 
   const _StoreCard({
     required this.name,
     required this.imageUrl,
     required this.description,
+    required this.isOpen,
     this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-
-    return Card(
-      elevation: 5,
-      margin: const EdgeInsets.only(bottom: 18),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-
-            ClipRRect(
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(18),
-              ),
-              child: imageUrl.isNotEmpty
-                  ? Image.network(
-                      imageUrl,
-                      height: 170,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                    )
-                  : Container(
-                      height: 170,
-                      color: Colors.grey[300],
-                      child: const Center(
-                        child: Icon(Icons.store, size: 60),
-                      ),
-                    ),
-            ),
-
-            Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    return Opacity(
+      opacity: isOpen ? 1.0 : 0.65,
+      child: Card(
+        elevation: 5,
+        margin: const EdgeInsets.only(bottom: 18),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: onTap,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Stack(
                 children: [
-
-                  Row(
-                    children: const [
-                      Icon(Icons.restaurant, color: Colors.orange),
-                      SizedBox(width: 6),
-                    ],
-                  ),
-
-                  const SizedBox(height: 4),
-
-                  Text(
-                    name,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
+                  ClipRRect(
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(18),
                     ),
+                    child: imageUrl.isNotEmpty
+                        ? ColorFiltered(
+                            colorFilter: isOpen
+                                ? const ColorFilter.mode(
+                                    Colors.transparent,
+                                    BlendMode.multiply,
+                                  )
+                                : ColorFilter.mode(
+                                    Colors.grey.withOpacity(0.45),
+                                    BlendMode.saturation,
+                                  ),
+                            child: Image.network(
+                              imageUrl,
+                              height: 170,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Container(
+                                  height: 170,
+                                  color: Colors.grey[300],
+                                  child: const Center(
+                                    child: Icon(Icons.store, size: 60),
+                                  ),
+                                );
+                              },
+                            ),
+                          )
+                        : Container(
+                            height: 170,
+                            color: Colors.grey[300],
+                            child: const Center(
+                              child: Icon(Icons.store, size: 60),
+                            ),
+                          ),
                   ),
-
-                  const SizedBox(height: 6),
-
-                  if (description.isNotEmpty)
-                    Text(
-                      description,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.grey[700],
-                        fontSize: 14,
+                  Positioned(
+                    top: 12,
+                    right: 12,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isOpen ? Colors.green : Colors.red,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            isOpen ? Icons.check_circle : Icons.cancel,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            isOpen ? 'ร้านเปิด' : 'ร้านปิด',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-
+                  ),
                 ],
               ),
-            ),
-          ],
+              Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.restaurant, color: Colors.orange),
+                        SizedBox(width: 6),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      name,
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: isOpen ? Colors.black : Colors.grey[700],
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    if (description.isNotEmpty)
+                      Text(
+                        description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.grey[700],
+                          fontSize: 14,
+                        ),
+                      ),
+                    if (!isOpen) ...[
+                      const SizedBox(height: 10),
+                      const Text(
+                        'ร้านปิดชั่วคราว',
+                        style: TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -279,14 +346,12 @@ class _StoreCard extends StatelessWidget {
 }
 
 class _ErrorBox extends StatelessWidget {
-
   final String msg;
 
   const _ErrorBox(this.msg);
 
   @override
   Widget build(BuildContext context) {
-
     return Padding(
       padding: const EdgeInsets.all(16),
       child: SelectableText(
@@ -298,14 +363,12 @@ class _ErrorBox extends StatelessWidget {
 }
 
 class _InfoBox extends StatelessWidget {
-
   final String msg;
 
   const _InfoBox(this.msg);
 
   @override
   Widget build(BuildContext context) {
-
     return Center(
       child: Text(
         msg,

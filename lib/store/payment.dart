@@ -45,7 +45,7 @@ class _PaymentPageState extends State<PaymentPage> {
         id + value.length.toString().padLeft(2, '0') + value;
 
     if (mobile.startsWith("0")) {
-      mobile = "66" + mobile.substring(1);
+      mobile = "66${mobile.substring(1)}";
     }
 
     String qr = format("00", "01") +
@@ -56,7 +56,7 @@ class _PaymentPageState extends State<PaymentPage> {
         format("54", amount.toStringAsFixed(2)) +
         format("58", "TH");
 
-    String crc = calculateCRC(qr + "6304");
+    String crc = calculateCRC("${qr}6304");
     qr += format("63", crc);
 
     return qr;
@@ -131,10 +131,7 @@ class _PaymentPageState extends State<PaymentPage> {
 
     setState(() => uploading = false);
   }
-
-  // ===============================
   // ⏳ Timer เมื่อหมดเวลา
-  // ===============================
   void startTimer() {
     timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (secondsLeft == 0) {

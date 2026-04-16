@@ -9,7 +9,6 @@ class HistoryPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
 
-    // ถ้ายังไม่ได้ login
     if (user == null) {
       return const Scaffold(
         body: Center(
@@ -30,7 +29,7 @@ class HistoryPage extends StatelessWidget {
       ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: ordersRef
-            .where('userId', isEqualTo: uid) // ✅ กรองตาม userId
+            .where('userId', isEqualTo: uid)
             .orderBy('createdAt', descending: true)
             .snapshots(),
         builder: (context, snap) {
@@ -68,6 +67,8 @@ class HistoryPage extends StatelessWidget {
                 fullName: (data['fullname'] ?? '').toString(),
                 phone: (data['phone'] ?? '').toString(),
                 address: (data['location'] ?? '').toString(),
+                deliveryImageUrl:
+                    (data['deliveryImageUrl'] ?? '').toString(),
                 storesRef: storesRef,
               );
             },
@@ -95,6 +96,7 @@ class _OrderCard extends StatelessWidget {
     required this.fullName,
     required this.phone,
     required this.address,
+    required this.deliveryImageUrl,
     required this.storesRef,
   });
 
@@ -104,6 +106,7 @@ class _OrderCard extends StatelessWidget {
   final String fullName;
   final String phone;
   final String address;
+  final String deliveryImageUrl;
   final CollectionReference<Map<String, dynamic>> storesRef;
 
   @override
@@ -153,6 +156,46 @@ class _OrderCard extends StatelessWidget {
           ],
         ),
         children: [
+          if (deliveryImageUrl.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'หลักฐานการจัดส่ง',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.network(
+                      deliveryImageUrl,
+                      width: double.infinity,
+                      height: 220,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          width: double.infinity,
+                          height: 220,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade200,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Text('โหลดรูปหลักฐานไม่สำเร็จ'),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              ),
+            ),
+
           _OrderItemsList(
             orderId: orderId,
             storesRef: storesRef,
@@ -203,15 +246,11 @@ class _OrderItemsList extends StatelessWidget {
             final data = doc.data();
 
             final name = (data['name'] ?? '').toString();
-            final price =
-                (data['price'] as num?)?.toDouble() ?? 0;
-            final qty =
-                (data['qty'] as num?)?.toInt() ?? 1;
+            final price = (data['price'] as num?)?.toDouble() ?? 0;
+            final qty = (data['qty'] as num?)?.toInt() ?? 1;
             final total = price * qty;
-            final imageUrl =
-                (data['imageUrl'] ?? '').toString();
-            final storeId =
-                (data['storeId'] ?? '').toString();
+            final imageUrl = (data['imageUrl'] ?? '').toString();
+            final storeId = (data['storeId'] ?? '').toString();
 
             return ListTile(
               leading: imageUrl.isEmpty
@@ -223,6 +262,9 @@ class _OrderItemsList extends StatelessWidget {
                         width: 48,
                         height: 48,
                         fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return const Icon(Icons.fastfood);
+                        },
                       ),
                     ),
               title: Text(name),

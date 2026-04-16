@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'add_menu.dart';
 import 'history_store.dart';
+import 'pending_store.dart';
 import 'select_location_store.dart';
 import '../login.dart';
 
@@ -20,20 +21,8 @@ class _StoreHomePageState extends State<StoreHomePage> {
 
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? orderListener;
   bool _listenerStarted = false;
+  String? _currentListeningStoreId;
 
-  Future<DocumentSnapshot<Map<String, dynamic>>?> _loadStoreByOwnerUid(
-      String uid) async {
-    final snap = await FirebaseFirestore.instance
-        .collection('stores')
-        .where('ownerUid', isEqualTo: uid)
-        .limit(1)
-        .get();
-
-    if (snap.docs.isEmpty) return null;
-    return snap.docs.first;
-  }
-
-  /// 🔴 ลบเมนู
   Future<void> _deleteMenu(DocumentReference docRef) async {
     try {
       await docRef.delete();
@@ -47,15 +36,47 @@ class _StoreHomePageState extends State<StoreHomePage> {
         ),
       );
     } catch (e) {
+      if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("ลบไม่สำเร็จ: $e")),
       );
     }
   }
 
+  Future<void> _toggleStoreStatus({
+    required DocumentReference<Map<String, dynamic>> storeRef,
+    required bool currentStatus,
+  }) async {
+    try {
+      await storeRef.update({
+        'isOpen': !currentStatus,
+      });
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            !currentStatus ? "✅ เปิดร้านแล้ว" : "❌ ปิดร้านแล้ว",
+          ),
+          backgroundColor: !currentStatus ? Colors.green : Colors.red,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("เปลี่ยนสถานะร้านไม่สำเร็จ: $e")),
+      );
+    }
+  }
+
   void listenNewOrders(String storeId) {
-    if (_listenerStarted) return;
+    if (_listenerStarted && _currentListeningStoreId == storeId) return;
+
     _listenerStarted = true;
+    _currentListeningStoreId = storeId;
 
     orderListener?.cancel();
 
@@ -63,6 +84,7 @@ class _StoreHomePageState extends State<StoreHomePage> {
         .collection('orders')
         .where('storeId', isEqualTo: storeId)
         .where('payment', isEqualTo: 'success')
+        .where('status', isEqualTo: 'pending')
         .snapshots()
         .listen((snapshot) {
       for (var change in snapshot.docChanges) {
@@ -80,7 +102,7 @@ class _StoreHomePageState extends State<StoreHomePage> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => HistoryStorePage(storeId: storeId),
+                      builder: (_) => PendingStorePage(storeId: storeId),
                     ),
                   );
                 },
@@ -115,25 +137,32 @@ class _StoreHomePageState extends State<StoreHomePage> {
       );
     }
 
-    return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>?>(
-      future: _loadStoreByOwnerUid(user.uid),
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('stores')
+          .where('ownerUid', isEqualTo: user.uid)
+          .limit(1)
+          .snapshots(),
       builder: (context, snap) {
-        if (!snap.hasData) {
+        if (snap.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
         }
 
-        if (snap.data == null) {
+        if (!snap.hasData || snap.data!.docs.isEmpty) {
           return const Scaffold(
             body: Center(child: Text("บัญชีนี้ยังไม่ได้สร้างร้านค้า")),
           );
         }
 
-        final storeDoc = snap.data!;
+        final storeDoc = snap.data!.docs.first;
         final storeRef = storeDoc.reference;
         final storeId = storeRef.id;
-        final storeName = storeDoc.data()?['name'] ?? 'ร้านของฉัน';
+        final storeData = storeDoc.data();
+
+        final storeName = storeData['name'] ?? 'ร้านของฉัน';
+        final isOpen = storeData['isOpen'] ?? false;
 
         WidgetsBinding.instance.addPostFrameCallback((_) {
           listenNewOrders(storeId);
@@ -144,128 +173,212 @@ class _StoreHomePageState extends State<StoreHomePage> {
 
         return Scaffold(
           backgroundColor: Colors.grey[100],
-
           appBar: AppBar(
-            title: Text(storeName),
+            title: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(storeName),
+                const SizedBox(height: 2),
+                Text(
+                  isOpen ? 'สถานะร้าน: เปิด' : 'สถานะร้าน: ปิด',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isOpen ? Colors.green.shade100 : Colors.red.shade100,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
             centerTitle: true,
             backgroundColor: Colors.orange,
-          ),
-
-          body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: menusQuery.snapshots(),
-            builder: (context, menuSnap) {
-              if (!menuSnap.hasData) {
-                return const Center(child: CircularProgressIndicator());
-              }
-
-              final docs = menuSnap.data!.docs;
-
-              if (docs.isEmpty) {
-                return const Center(
-                  child: Text(
-                    'ยังไม่มีเมนูในร้าน',
-                    style: TextStyle(fontSize: 18),
-                  ),
-                );
-              }
-
-              return ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: docs.length,
-                itemBuilder: (_, i) {
-                  final m = docs[i].data();
-
-                  final name = m['name'] ?? "";
-                  final img = m['imageUrl'] ?? "";
-                  final price = (m['price'] as num?)?.toDouble() ?? 0.0;
-
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 14),
-                    child: Card(
-                      elevation: 4,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
+            actions: [
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      isOpen ? "เปิด" : "ปิด",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
                       ),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.all(12),
-
-                        leading: ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: img.isNotEmpty
-                              ? Image.network(
-                                  img,
-                                  width: 70,
-                                  height: 70,
-                                  fit: BoxFit.cover,
-                                )
-                              : Container(
-                                  width: 70,
-                                  height: 70,
-                                  color: const Color.fromARGB(255, 255, 255, 255),
-                                  child: const Icon(Icons.fastfood),
-                                ),
-                        ),
-
-                        title: Text(
-                          name,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18,
-                          ),
-                        ),
-
-                        subtitle: Text(
-                          "ราคา ${price.toStringAsFixed(2)} บาท",
-                          style: const TextStyle(
-                            fontSize: 15,
-                            color: Colors.orange,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-
-                        /// 🔴 ปุ่มลบเมนู
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.red),
-                          onPressed: () {
-                            showDialog(
-                              context: context,
-                              builder: (_) => AlertDialog(
-                                title: const Text("ลบเมนู"),
-                                content:
-                                    const Text("คุณต้องการลบเมนูนี้หรือไม่"),
-                                actions: [
-                                  TextButton(
-                                    child: const Text("ยกเลิก"),
-                                    onPressed: () =>
-                                        Navigator.pop(context),
-                                  ),
-                                  TextButton(
-                                    child: const Text(
-                                      "ลบ",
-                                      style: TextStyle(color: Colors.red),
-                                    ),
-                                    onPressed: () {
-                                      Navigator.pop(context);
-                                      _deleteMenu(docs[i].reference);
-                                    },
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
+                    ),
+                    Switch(
+                      value: isOpen,
+                      activeColor: Colors.green,
+                      onChanged: (_) {
+                        _toggleStoreStatus(
+                          storeRef: storeRef,
+                          currentStatus: isOpen,
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          body: Column(
+            children: [
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: isOpen ? Colors.green.shade50 : Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isOpen ? Colors.green : Colors.red,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      isOpen ? Icons.storefront : Icons.store_mall_directory,
+                      color: isOpen ? Colors.green : Colors.red,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        isOpen
+                            ? 'ร้านของคุณเปิดอยู่ ลูกค้าสามารถสั่งอาหารได้'
+                            : 'ร้านของคุณปิดอยู่ ลูกค้าจะไม่ควรเห็นร้านนี้',
+                        style: TextStyle(
+                          color: isOpen ? Colors.green.shade900 : Colors.red.shade900,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ),
-                  );
-                },
-              );
-            },
-          ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                  stream: menusQuery.snapshots(),
+                  builder: (context, menuSnap) {
+                    if (menuSnap.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
 
+                    if (!menuSnap.hasData) {
+                      return const Center(child: Text('ไม่พบข้อมูลเมนู'));
+                    }
+
+                    final docs = menuSnap.data!.docs;
+
+                    if (docs.isEmpty) {
+                      return const Center(
+                        child: Text(
+                          'ยังไม่มีเมนูในร้าน',
+                          style: TextStyle(fontSize: 18),
+                        ),
+                      );
+                    }
+
+                    return ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: docs.length,
+                      itemBuilder: (_, i) {
+                        final m = docs[i].data();
+
+                        final name = m['name'] ?? "";
+                        final img = m['imageUrl'] ?? "";
+                        final price = (m['price'] as num?)?.toDouble() ?? 0.0;
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 14),
+                          child: Card(
+                            elevation: 4,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.all(12),
+                              leading: ClipRRect(
+                                borderRadius: BorderRadius.circular(10),
+                                child: img.isNotEmpty
+                                    ? Image.network(
+                                        img,
+                                        width: 70,
+                                        height: 70,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (context, error, stackTrace) {
+                                          return Container(
+                                            width: 70,
+                                            height: 70,
+                                            color: Colors.white,
+                                            child: const Icon(Icons.fastfood),
+                                          );
+                                        },
+                                      )
+                                    : Container(
+                                        width: 70,
+                                        height: 70,
+                                        color: Colors.white,
+                                        child: const Icon(Icons.fastfood),
+                                      ),
+                              ),
+                              title: Text(
+                                name,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 18,
+                                ),
+                              ),
+                              subtitle: Text(
+                                "ราคา ${price.toStringAsFixed(2)} บาท",
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  color: Colors.orange,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.delete, color: Colors.red),
+                                onPressed: () {
+                                  showDialog(
+                                    context: context,
+                                    builder: (_) => AlertDialog(
+                                      title: const Text("ลบเมนู"),
+                                      content: const Text("คุณต้องการลบเมนูนี้หรือไม่"),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(context),
+                                          child: const Text("ยกเลิก"),
+                                        ),
+                                        TextButton(
+                                          onPressed: () {
+                                            Navigator.pop(context);
+                                            _deleteMenu(docs[i].reference);
+                                          },
+                                          child: const Text(
+                                            "ลบ",
+                                            style: TextStyle(color: Colors.red),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
           bottomNavigationBar: BottomNavigationBar(
             currentIndex: _currentIndex,
             selectedItemColor: Colors.orange,
-            unselectedItemColor: Colors.orange,
+            unselectedItemColor: Colors.grey,
             type: BottomNavigationBarType.fixed,
             items: const [
               BottomNavigationBarItem(
@@ -275,6 +388,10 @@ class _StoreHomePageState extends State<StoreHomePage> {
               BottomNavigationBarItem(
                 icon: Icon(Icons.history),
                 label: 'ประวัติ',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.pending_actions),
+                label: 'รอดำเนินการ',
               ),
               BottomNavigationBarItem(
                 icon: Icon(Icons.location_on),
@@ -306,11 +423,17 @@ class _StoreHomePageState extends State<StoreHomePage> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) =>
-                        SelectLocationStorePage(storeId: storeId),
+                    builder: (_) => PendingStorePage(storeId: storeId),
                   ),
                 );
               } else if (index == 3) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => SelectLocationStorePage(storeId: storeId),
+                  ),
+                );
+              } else if (index == 4) {
                 await FirebaseAuth.instance.signOut();
 
                 if (!mounted) return;

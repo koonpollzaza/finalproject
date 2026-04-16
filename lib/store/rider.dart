@@ -72,8 +72,7 @@ class RiderHomePage extends StatelessWidget {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) =>
-                RiderOrderDetailPage(orderId: doc.id),
+            builder: (_) => RiderOrderDetailPage(orderId: doc.id),
           ),
         );
       }
@@ -110,10 +109,7 @@ class RiderHomePage extends StatelessWidget {
                 ),
               ],
             ),
-
-            /// 🔥 ปุ่มด้านขวา
             actions: [
-
               /// ✅ ปุ่มไปหน้าประวัติ
               IconButton(
                 icon: const Icon(Icons.history),
@@ -141,13 +137,11 @@ class RiderHomePage extends StatelessWidget {
                       content: const Text('คุณต้องการออกจากระบบหรือไม่?'),
                       actions: [
                         TextButton(
-                          onPressed: () =>
-                              Navigator.pop(context, false),
+                          onPressed: () => Navigator.pop(context, false),
                           child: const Text('ยกเลิก'),
                         ),
                         ElevatedButton(
-                          onPressed: () =>
-                              Navigator.pop(context, true),
+                          onPressed: () => Navigator.pop(context, true),
                           child: const Text('ออกจากระบบ'),
                         ),
                       ],
@@ -164,6 +158,7 @@ class RiderHomePage extends StatelessWidget {
 
           /// ===============================
           /// แสดงเฉพาะงานที่ยังไม่มีใครรับ
+          /// และ "ไม่ใช่" รับอาหารที่ร้าน
           /// ===============================
           body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
             stream: FirebaseFirestore.instance
@@ -185,7 +180,16 @@ class RiderHomePage extends StatelessWidget {
                 );
               }
 
-              final orders = snap.data?.docs ?? [];
+              final allOrders = snap.data?.docs ?? [];
+
+              /// ✅ ตัด order ที่เป็น "รับอาหารที่ร้าน" ออก
+              final orders = allOrders.where((doc) {
+                final data = doc.data();
+                final location =
+                    (data['location'] ?? '').toString().trim().toLowerCase();
+
+                return location != 'รับอาหารที่ร้าน';
+              }).toList();
 
               if (orders.isEmpty) {
                 return const Center(

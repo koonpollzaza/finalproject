@@ -96,7 +96,6 @@ class _CartPageState extends State<CartPage> {
               docs.map((d) => d.data()['storeId']?.toString() ?? '').toSet();
 
           final multipleStores = storeIds.length > 1;
-
           final storeId = storeIds.isNotEmpty ? storeIds.first : null;
 
           final total = docs.fold<double>(0, (sum, d) {
@@ -126,9 +125,10 @@ class _CartPageState extends State<CartPage> {
                             return Text(
                               "ร้าน: ${snapshot.data}",
                               style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.deepOrange),
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.deepOrange,
+                              ),
                             );
                           },
                         ),
@@ -255,10 +255,11 @@ class _CartPageState extends State<CartPage> {
   }
 
   Widget _buildSummary(
-      double total,
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-      bool multipleStores,
-      String? storeId) {
+    double total,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+    bool multipleStores,
+    String? storeId,
+  ) {
     return Container(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -270,8 +271,10 @@ class _CartPageState extends State<CartPage> {
               ),
               Text(
                 '${total.toStringAsFixed(2)} บาท',
-                style:
-                    const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ],
           ),
@@ -279,7 +282,6 @@ class _CartPageState extends State<CartPage> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              child: const Text('ยืนยันการสั่งสินค้า'),
               onPressed: docs.isEmpty || multipleStores
                   ? null
                   : () {
@@ -287,6 +289,7 @@ class _CartPageState extends State<CartPage> {
                         _submitOrder(docs, total, storeId);
                       }
                     },
+              child: const Text('ยืนยันการสั่งสินค้า'),
             ),
           ),
         ],
@@ -310,9 +313,10 @@ class _CartPageState extends State<CartPage> {
   }
 
   Future<void> _submitOrder(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-      double total,
-      String? storeId) async {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+    double total,
+    String? storeId,
+  ) async {
     final db = FirebaseFirestore.instance;
 
     final Map<String, dynamic> orderData = {
@@ -332,9 +336,13 @@ class _CartPageState extends State<CartPage> {
       orderData['lat'] = _lat;
       orderData['lng'] = _lng;
       orderData['riderStatus'] = 'pending';
+      orderData['PickUp'] = false;
     } else {
       orderData['location'] = 'รับอาหารที่ร้าน';
       orderData['PickUp'] = true;
+      orderData['riderStatus'] = 'pending';
+      orderData['lat'] = null;
+      orderData['lng'] = null;
     }
 
     final orderRef = await db.collection('orders').add(orderData);
@@ -350,18 +358,14 @@ class _CartPageState extends State<CartPage> {
 
     if (!mounted) return;
 
-    if (_paymentMethod == 'payment') {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => PaymentPage(orderId: orderRef.id, total: total),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PaymentPage(
+          orderId: orderRef.id,
+          total: total,
         ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('สั่งซื้อแบบรับที่ร้านเรียบร้อย')),
-      );
-      Navigator.pop(context);
-    }
+      ),
+    );
   }
 }
