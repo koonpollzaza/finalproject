@@ -30,42 +30,57 @@ class _PaymentPageState extends State<PaymentPage> {
 
   final String promptPayId = "0968355416";
 
+  // ✅ ค่าจัดส่ง
+  final double deliveryFee = 15.0;
+
+  // ✅ ยอดรวมทั้งหมด = ค่าอาหาร + ค่าส่ง
+  late double finalTotal;
+
   @override
   void initState() {
     super.initState();
-    qrData = generatePromptPayQR(promptPayId, widget.total);
+
+    finalTotal = widget.total + deliveryFee;
+
+    // ✅ QR ใช้ยอดรวมทั้งหมด
+    qrData = generatePromptPayQR(promptPayId, finalTotal);
+
     startTimer();
   }
 
-  // ===============================
-  // 🔥 สร้าง PromptPay QR
-  // ===============================
   String generatePromptPayQR(String mobile, double amount) {
-    String format(String id, String value) =>
-        id + value.length.toString().padLeft(2, '0') + value;
+  String format(String id, String value) =>
+      id + value.length.toString().padLeft(2, '0') + value;
 
-    if (mobile.startsWith("0")) {
-      mobile = "66${mobile.substring(1)}";
-    }
-
-    String qr = format("00", "01") +
-        format("01", "11") +
-        format("29", format("00", "A000000677010111") + format("01", mobile)) +
-        format("52", "0000") +
-        format("53", "764") +
-        format("54", amount.toStringAsFixed(2)) +
-        format("58", "TH");
-
-    String crc = calculateCRC("${qr}6304");
-    qr += format("63", crc);
-
-    return qr;
+  // ✅ แปลงเบอร์ PromptPay ให้ถูกต้อง
+  if (mobile.startsWith("0")) {
+    mobile = "0066${mobile.substring(1)}";
   }
+
+  String qr = format("00", "01") +
+      format("01", "11") +
+      format(
+        "29",
+        format("00", "A000000677010111") +
+            format("01", mobile),
+      ) +
+      format("52", "0000") +
+      format("53", "764") +
+      format("54", amount.toStringAsFixed(2)) +
+      format("58", "TH");
+
+  String crc = calculateCRC("${qr}6304");
+  qr += format("63", crc);
+
+  return qr;
+}
 
   String calculateCRC(String input) {
     int crc = 0xFFFF;
+
     for (int i = 0; i < input.length; i++) {
       crc ^= input.codeUnitAt(i) << 8;
+
       for (int j = 0; j < 8; j++) {
         if ((crc & 0x8000) != 0) {
           crc = (crc << 1) ^ 0x1021;
@@ -75,15 +90,15 @@ class _PaymentPageState extends State<PaymentPage> {
         crc &= 0xFFFF;
       }
     }
+
     return crc.toRadixString(16).toUpperCase().padLeft(4, '0');
   }
 
-  // ===============================
-  // 📷 เลือกรูป
-  // ===============================
   Future<void> pickImage() async {
-    final picked = await ImagePicker()
-        .pickImage(source: ImageSource.gallery, imageQuality: 70);
+    final picked = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 70,
+    );
 
     if (picked != null) {
       setState(() {
@@ -92,9 +107,6 @@ class _PaymentPageState extends State<PaymentPage> {
     }
   }
 
-  // ===============================
-  // 🔥 อัปโหลดสลิป
-  // ===============================
   Future<void> uploadSlip() async {
     if (slipImage == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -117,6 +129,11 @@ class _PaymentPageState extends State<PaymentPage> {
           .update({
         'payment': 'pending',
         'slipUrl': url,
+
+        // ✅ เก็บค่าจัดส่งและยอดรวมลง Firestore
+        'deliveryFee': deliveryFee,
+        'foodTotal': widget.total,
+        'total': finalTotal,
       });
 
       timer?.cancel();
@@ -129,9 +146,11 @@ class _PaymentPageState extends State<PaymentPage> {
       );
     }
 
-    setState(() => uploading = false);
+    if (mounted) {
+      setState(() => uploading = false);
+    }
   }
-  // ⏳ Timer เมื่อหมดเวลา
+
   void startTimer() {
     timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (secondsLeft == 0) {
@@ -162,7 +181,6 @@ class _PaymentPageState extends State<PaymentPage> {
       ),
     );
 
-    // 🔥 ลบ document order ทั้งก้อน
     await FirebaseFirestore.instance
         .collection('orders')
         .doc(widget.orderId)
@@ -194,28 +212,89 @@ class _PaymentPageState extends State<PaymentPage> {
           padding: const EdgeInsets.all(20),
           child: Column(
             children: [
-              const Text("สแกนเพื่อชำระเงิน",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 20),
-              QrImageView(data: qrData, size: 240),
-              const SizedBox(height: 20),
-              Text(
-                "ยอด ${widget.total.toStringAsFixed(2)} บาท",
-                style:
-                    const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              const Text(
+                "สแกนเพื่อชำระเงิน",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
+
+              const SizedBox(height: 20),
+
+              QrImageView(
+                data: qrData,
+                size: 240,
+              ),
+
+              const SizedBox(height: 20),
+
+              Card(
+                elevation: 2,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text("ค่าอาหาร"),
+                          Text("${widget.total.toStringAsFixed(2)} บาท"),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text("ค่าจัดส่ง"),
+                          Text("${deliveryFee.toStringAsFixed(2)} บาท"),
+                        ],
+                      ),
+                      const Divider(height: 24),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            "ยอดรวมทั้งหมด",
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            "${finalTotal.toStringAsFixed(2)} บาท",
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
               const SizedBox(height: 15),
+
               Text(
                 "เวลาที่เหลือ $minutes:$seconds",
                 style: const TextStyle(color: Colors.red, fontSize: 18),
               ),
+
               const Divider(height: 40),
-              if (slipImage != null) Image.file(slipImage!, height: 180),
+
+              if (slipImage != null)
+                Image.file(
+                  slipImage!,
+                  height: 180,
+                ),
+
               ElevatedButton(
                 onPressed: pickImage,
                 child: const Text("แนบสลิป"),
               ),
+
               const SizedBox(height: 15),
+
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(

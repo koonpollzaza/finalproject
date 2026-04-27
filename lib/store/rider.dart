@@ -43,7 +43,7 @@ class RiderHomePage extends StatelessWidget {
   }
 
   /// ===============================
-  /// รับงาน (Transaction กันรับซ้อน)
+  /// รับงาน (กันรับซ้อน)
   /// ===============================
   Future<void> _acceptOrder({
     required BuildContext context,
@@ -86,9 +86,6 @@ class RiderHomePage extends StatelessWidget {
     }
   }
 
-  /// ===============================
-  /// BUILD UI
-  /// ===============================
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<String>(
@@ -110,7 +107,7 @@ class RiderHomePage extends StatelessWidget {
               ],
             ),
             actions: [
-              /// ✅ ปุ่มไปหน้าประวัติ
+              // ปุ่มไปหน้าประวัติ
               IconButton(
                 icon: const Icon(Icons.history),
                 tooltip: 'ประวัติคำสั่งซื้อ',

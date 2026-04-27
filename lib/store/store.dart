@@ -245,8 +245,8 @@ class _StoreHomePageState extends State<StoreHomePage> {
                     Expanded(
                       child: Text(
                         isOpen
-                            ? 'ร้านของคุณเปิดอยู่ ลูกค้าสามารถสั่งอาหารได้'
-                            : 'ร้านของคุณปิดอยู่ ลูกค้าจะไม่ควรเห็นร้านนี้',
+                            ? 'ร้านของคุณเปิดอยู่'
+                            : 'ร้านของคุณปิดอยู่',
                         style: TextStyle(
                           color: isOpen ? Colors.green.shade900 : Colors.red.shade900,
                           fontWeight: FontWeight.bold,

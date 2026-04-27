@@ -1,5 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import 'store/food.dart';
 import 'store/drink.dart';
@@ -20,10 +24,22 @@ class _HomePageState extends State<HomePage> {
   bool isLoading = true;
   List<String> imageUrls = [];
 
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _orderSubscription;
+
+  final Set<String> _shownDeliverySuccess = {};
+  final Set<String> _shownRiderAccepted = {};
+
   @override
   void initState() {
     super.initState();
     _loadStoreImages();
+    _listenOrderStatusInApp();
+  }
+
+  @override
+  void dispose() {
+    _orderSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadStoreImages() async {
@@ -43,16 +59,73 @@ class _HomePageState extends State<HomePage> {
         urls.add(url);
       }
 
+      if (!mounted) return;
       setState(() {
         imageUrls = urls;
         isLoading = false;
       });
     } catch (e) {
       debugPrint('โหลดรูปไม่สำเร็จ: $e');
+      if (!mounted) return;
       setState(() {
         isLoading = false;
       });
     }
+  }
+
+  void _showInAppMessage(String message, {Color? color}) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: color,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+  }
+
+  void _listenOrderStatusInApp() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    _orderSubscription = FirebaseFirestore.instance
+        .collection('orders')
+        .where('userId', isEqualTo: user.uid)
+        .snapshots()
+        .listen((snapshot) {
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        final orderId = doc.id;
+
+        final status = (data['status'] ?? '').toString().trim().toLowerCase();
+        final riderStatus =
+            (data['riderStatus'] ?? '').toString().trim().toLowerCase();
+
+        if (riderStatus == 'success' &&
+            !_shownRiderAccepted.contains(orderId)) {
+          _shownRiderAccepted.add(orderId);
+          _showInAppMessage(
+            'ไรเดอร์รับงานของคุณแล้ว',
+            color: Colors.orange,
+          );
+        }
+
+        if (status == 'success' &&
+            !_shownDeliverySuccess.contains(orderId)) {
+          _shownDeliverySuccess.add(orderId);
+          _showInAppMessage(
+            'จัดส่งสำเร็จ',
+            color: Colors.green,
+          );
+        }
+      }
+    }, onError: (error) {
+      debugPrint('ฟังสถานะ orders ไม่สำเร็จ: $error');
+    });
   }
 
   void _openStore(int index) {
@@ -73,7 +146,6 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[100],
-
       appBar: AppBar(
         title: const Text(
           "Food Delivery",
@@ -83,15 +155,12 @@ class _HomePageState extends State<HomePage> {
         centerTitle: true,
         elevation: 0,
       ),
-
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-
-                  /// Banner
                   Container(
                     height: 150,
                     width: double.infinity,
@@ -112,10 +181,7 @@ class _HomePageState extends State<HomePage> {
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 20),
-
-                  /// หัวข้อ
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 16),
                     child: Text(
@@ -126,10 +192,7 @@ class _HomePageState extends State<HomePage> {
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 12),
-
-                  /// ร้านค้า
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: GridView.builder(
@@ -150,22 +213,21 @@ class _HomePageState extends State<HomePage> {
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
+                              boxShadow: const [
                                 BoxShadow(
                                   color: Colors.black12,
                                   blurRadius: 6,
-                                  offset: const Offset(0, 3),
+                                  offset: Offset(0, 3),
                                 )
                               ],
                             ),
                             child: Column(
                               children: [
-
-                                /// รูปร้าน
                                 Expanded(
                                   child: ClipRRect(
                                     borderRadius: const BorderRadius.vertical(
-                                        top: Radius.circular(16)),
+                                      top: Radius.circular(16),
+                                    ),
                                     child: Image.network(
                                       imageUrls[index],
                                       width: double.infinity,
@@ -175,8 +237,6 @@ class _HomePageState extends State<HomePage> {
                                     ),
                                   ),
                                 ),
-
-                                /// ชื่อร้าน
                                 Padding(
                                   padding: const EdgeInsets.all(10),
                                   child: Text(
@@ -195,13 +255,10 @@ class _HomePageState extends State<HomePage> {
                       },
                     ),
                   ),
-
                   const SizedBox(height: 20),
                 ],
               ),
             ),
-
-      /// Bottom Navigation
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
         backgroundColor: Colors.white,

@@ -24,10 +24,10 @@ class _RegisterPageState extends State<RegisterPage> {
 
   String _selectedRole = 'member'; // member, store, rider
 
-  // ✅ รูปโลโก้ร้าน (ใช้เฉพาะตอน role = store)
+  //  รูปโลโก้ร้าน (ใช้เฉพาะตอน role = store)
   File? _storeImageFile;
 
-  // ✅ ประเภทร้าน (เฉพาะตอน store) : food / drink
+  //  ประเภทร้าน (เฉพาะตอน store) : food / drink
   String _shopType = 'food';
 
   @override
@@ -153,14 +153,14 @@ class _RegisterPageState extends State<RegisterPage> {
         'name': displayName,
         'ownerUid': uid,
         'phone': phone,
-        'shopType': _shopType, // ✅ ประเภรร้าน
-        'isBanned': false,
-        'approvalStatus': 'pending', // ✅ ค่าเริ่มต้นไม่ถูกแบน
+        'shopType': _shopType, //  ประเภทร้าน
+        'isBanned': false, //  ค่าเริ่มต้นไม่ถูกแบน
+        'approvalStatus': 'pending', //  ค่าเริ่มต้นรออนุมัติ
         'createdAt': FieldValue.serverTimestamp(),
       });
       storeId = storeRef.id;
 
-      // ✅ ถ้ามีเลือกรูปร้าน ให้ upload ขึ้น Storage แล้วเก็บ imageUrl
+      //  ถ้ามีเลือกรูปร้าน ให้ upload ขึ้น Storage แล้วเก็บ imageUrl
       if (_storeImageFile != null) {
         try {
           final storageRef = FirebaseStorage.instance
@@ -186,8 +186,8 @@ class _RegisterPageState extends State<RegisterPage> {
         'name': displayName,
         'userUid': uid,
         'phone': phone,
-        'isBanned': false, // ถ้าอยากให้ rider ก็มีสถานะแบนได้
-        'approvalStatus': 'pending', // ✅ ค่าเริ่มต้นไม่ถูกแบน
+        'isBanned': false, // ค่าเริ่มต้นไม่ถูกแบน
+        'approvalStatus': 'pending', //  ค่าเริ่มต้นไม่ถูกแบน
         'createdAt': FieldValue.serverTimestamp(),
       });
       riderId = riderRef.id;
@@ -201,10 +201,10 @@ class _RegisterPageState extends State<RegisterPage> {
       'userId': uid,
       'storeId': storeId, // null ถ้าไม่ใช่ store
       'riderId': riderId, // null ถ้าไม่ใช่ rider
-      'isBanned': false, // ✅ สมาชิกใหม่ทุกคน isBanned = false
+      'isBanned': false, //  สมาชิกใหม่ทุกคน isBanned = false
       if (storeLogoUrl != null) 'storeLogoUrl': storeLogoUrl,
       if (_selectedRole == 'store')
-        'shopType': _shopType, // ✅ เก็บใน users ด้วย
+        'shopType': _shopType, //  เก็บใน users ด้วย
     }, SetOptions(merge: true));
 
     _toast('สมัครสมาชิกสำเร็จ');
@@ -245,7 +245,7 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  // ✅ เลือกรูปร้านจากแกลเลอรี่
+  //  เลือกรูปร้านจากแกลเลอรี่
   Future<void> _pickStoreImage() async {
     try {
       final picker = ImagePicker();
