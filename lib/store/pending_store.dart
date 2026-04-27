@@ -9,8 +9,14 @@ class PendingStorePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.grey.shade100,
       appBar: AppBar(
-        title: const Text('ออเดอร์รอดำเนินการ'),
+        elevation: 0,
+        centerTitle: true,
+        title: const Text(
+          'ออเดอร์รอดำเนินการ',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         backgroundColor: Colors.orange,
       ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -22,7 +28,12 @@ class PendingStorePage extends StatelessWidget {
             : FirebaseFirestore.instance.collection('orders').snapshots(),
         builder: (context, snap) {
           if (snap.hasError) {
-            return Center(child: Text('เกิดข้อผิดพลาด: ${snap.error}'));
+            return _EmptyState(
+              icon: Icons.error_outline,
+              title: 'เกิดข้อผิดพลาด',
+              subtitle: '${snap.error}',
+              color: Colors.red,
+            );
           }
 
           if (!snap.hasData) {
@@ -62,13 +73,18 @@ class PendingStorePage extends StatelessWidget {
           });
 
           if (docs.isEmpty) {
-            return const Center(child: Text('ยังไม่มีออเดอร์รอดำเนินการ'));
+            return const _EmptyState(
+              icon: Icons.receipt_long,
+              title: 'ยังไม่มีออเดอร์รอดำเนินการ',
+              subtitle: 'เมื่อมีออเดอร์ใหม่ รายการจะแสดงที่นี่',
+              color: Colors.orange,
+            );
           }
 
           return ListView.separated(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(14),
             itemCount: docs.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            separatorBuilder: (_, __) => const SizedBox(height: 12),
             itemBuilder: (_, i) {
               final d = docs[i];
               final data = d.data();
@@ -102,8 +118,6 @@ class PendingStorePage extends StatelessWidget {
     return '-';
   }
 }
-
-/* ================= ORDER CARD ================= */
 
 class _OrderCard extends StatefulWidget {
   const _OrderCard({
@@ -205,6 +219,9 @@ class _OrderCardState extends State<_OrderCard> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+        ),
         title: const Text('ยืนยันการยกเลิก'),
         content: const Text('ต้องการลบออเดอร์นี้ใช่หรือไม่?'),
         actions: [
@@ -212,9 +229,14 @@ class _OrderCardState extends State<_OrderCard> {
             onPressed: () => Navigator.pop(context, false),
             child: const Text('ไม่'),
           ),
-          TextButton(
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('ยืนยัน'),
+            icon: const Icon(Icons.delete),
+            label: const Text('ยืนยัน'),
           ),
         ],
       ),
@@ -229,6 +251,7 @@ class _OrderCardState extends State<_OrderCard> {
           FirebaseFirestore.instance.collection('orders').doc(widget.orderId);
 
       final items = await orderRef.collection('items').get();
+
       for (final doc in items.docs) {
         await doc.reference.delete();
       }
@@ -251,10 +274,16 @@ class _OrderCardState extends State<_OrderCard> {
   String _statusLabel(String value) =>
       value == 'success' ? 'จัดส่งสำเร็จ' : 'รอดำเนินการ';
 
+  String _paymentLabel(String value) =>
+      value == 'success' ? 'ชำระเงินแล้ว' : 'รอชำระเงิน';
+
   String _riderLabel(String value) =>
       value == 'success' ? 'ไรเดอร์รับงานแล้ว' : 'กำลังหาไรเดอร์';
 
   Color _statusColor(String value) =>
+      value == 'success' ? Colors.green : Colors.orange;
+
+  Color _paymentColor(String value) =>
       value == 'success' ? Colors.green : Colors.orange;
 
   Color _riderColor(String value) =>
@@ -264,12 +293,20 @@ class _OrderCardState extends State<_OrderCard> {
     showDialog(
       context: context,
       builder: (_) => Dialog(
-        child: InteractiveViewer(
-          child: Image.network(
-            url,
-            errorBuilder: (_, __, ___) => const Padding(
-              padding: EdgeInsets.all(20),
-              child: Text('โหลดรูปภาพไม่สำเร็จ'),
+        insetPadding: const EdgeInsets.all(18),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(18),
+          child: InteractiveViewer(
+            child: Image.network(
+              url,
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => const Padding(
+                padding: EdgeInsets.all(20),
+                child: Text('โหลดรูปภาพไม่สำเร็จ'),
+              ),
             ),
           ),
         ),
@@ -279,187 +316,344 @@ class _OrderCardState extends State<_OrderCard> {
 
   @override
   Widget build(BuildContext context) {
+    final statusColor = _statusColor(_status);
+
     return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: ExpansionTile(
-        tilePadding: const EdgeInsets.all(12),
-        title: Row(
-          children: [
-            Expanded(
-              child: Text(
-                'Order: ${widget.orderId}',
-                overflow: TextOverflow.ellipsis,
-              ),
+      elevation: 3,
+      shadowColor: Colors.black12,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.all(14),
+          childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+          leading: CircleAvatar(
+            backgroundColor: statusColor.withOpacity(0.12),
+            child: Icon(Icons.receipt_long, color: statusColor),
+          ),
+          title: const Text(
+            'ออเดอร์',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
             ),
-            Chip(
-              label: Text(
-                _statusLabel(_status),
-                style: const TextStyle(color: Colors.white),
-              ),
-              backgroundColor: _statusColor(_status),
-            ),
-          ],
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('เวลา: ${widget.createdText}'),
-            const SizedBox(height: 10),
-
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.person, size: 18),
-                      const SizedBox(width: 6),
-                      Expanded(child: Text('ลูกค้า: ${widget.fullName}')),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      const Icon(Icons.phone, size: 18),
-                      const SizedBox(width: 6),
-                      Expanded(child: Text('เบอร์: ${widget.phone}')),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(Icons.home, size: 18),
-                      const SizedBox(width: 6),
-                      Expanded(child: Text('ที่อยู่: ${widget.address}')),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 10),
-
-            if (widget.locationText.isNotEmpty)
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.grey[100],
-                  borderRadius: BorderRadius.circular(10),
+          ),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Order: ${widget.orderId}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: Colors.grey.shade700),
                 ),
-                child: Row(
+                const SizedBox(height: 6),
+                Row(
                   children: [
-                    const Icon(Icons.location_on, color: Colors.red),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(widget.locationText)),
+                    Icon(Icons.schedule, size: 16, color: Colors.grey.shade600),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text(
+                        widget.createdText,
+                        style: TextStyle(color: Colors.grey.shade700),
+                      ),
+                    ),
                   ],
                 ),
-              ),
-
-            const SizedBox(height: 10),
-
-            const Text("สถานะออเดอร์"),
-            DropdownButton<String>(
-              value: _status,
-              isExpanded: true,
-              items: const [
-                DropdownMenuItem(value: 'pending', child: Text('รอดำเนินการ')),
-                DropdownMenuItem(value: 'success', child: Text('จัดส่งสำเร็จ')),
-              ],
-              onChanged: (value) {
-                if (value != null) _updateStatus(value);
-              },
-            ),
-
-            const SizedBox(height: 10),
-
-            const Text("สถานะการชำระเงิน"),
-            DropdownButton<String>(
-              value: _payment,
-              isExpanded: true,
-              items: const [
-                DropdownMenuItem(
-                  value: 'pending',
-                  child: Text('ชำระเงินไม่สำเร็จ'),
-                ),
-                DropdownMenuItem(value: 'success', child: Text('ชำระเงินแล้ว')),
-              ],
-              onChanged: (value) {
-                if (value != null) _updatePayment(value);
-              },
-            ),
-
-            if (!_isPickup) ...[
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  const Text(
-                    'สถานะไรเดอร์ : ',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(width: 6),
-                  Chip(
-                    label: Text(
-                      _riderLabel(_riderStatus),
-                      style: const TextStyle(color: Colors.white),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    _StatusChip(
+                      label: _statusLabel(_status),
+                      color: _statusColor(_status),
                     ),
-                    backgroundColor: _riderColor(_riderStatus),
+                    _StatusChip(
+                      label: _paymentLabel(_payment),
+                      color: _paymentColor(_payment),
+                    ),
+                    if (!_isPickup)
+                      _StatusChip(
+                        label: _riderLabel(_riderStatus),
+                        color: _riderColor(_riderStatus),
+                      ),
+                    if (_isPickup)
+                      const _StatusChip(
+                        label: 'รับเองที่ร้าน',
+                        color: Colors.blue,
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          children: [
+            _SectionCard(
+              title: 'ข้อมูลลูกค้า',
+              icon: Icons.person,
+              color: Colors.cyan,
+              child: Column(
+                children: [
+                  _InfoRow(
+                    icon: Icons.account_circle,
+                    label: 'ลูกค้า',
+                    value: widget.fullName,
                   ),
+                  _InfoRow(
+                    icon: Icons.phone,
+                    label: 'เบอร์',
+                    value: widget.phone,
+                  ),
+                  if (widget.address != '-')
+                    _InfoRow(
+                      icon: Icons.home,
+                      label: 'ที่อยู่',
+                      value: widget.address,
+                    ),
+                  if (widget.locationText.isNotEmpty)
+                    _InfoRow(
+                      icon: Icons.location_on,
+                      label: _isPickup ? 'การรับสินค้า' : 'ตำแหน่งจัดส่ง',
+                      value: widget.locationText,
+                    ),
                 ],
               ),
-            ],
+            ),
+
+            _SectionCard(
+              title: 'แก้ไขสถานะ',
+              icon: Icons.tune,
+              color: Colors.orange,
+              child: Column(
+                children: [
+                  _DropdownBox(
+                    title: 'สถานะออเดอร์',
+                    icon: Icons.assignment_turned_in,
+                    value: _status,
+                    color: _statusColor(_status),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'pending',
+                        child: Text('รอดำเนินการ'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'success',
+                        child: Text('จัดส่งสำเร็จ'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) _updateStatus(value);
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  _DropdownBox(
+                    title: 'สถานะการชำระเงิน',
+                    icon: Icons.payments,
+                    value: _payment,
+                    color: _paymentColor(_payment),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'pending',
+                        child: Text('รอชำระเงิน'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'success',
+                        child: Text('ชำระเงินแล้ว'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) _updatePayment(value);
+                    },
+                  ),
+                  if (!_isPickup) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: _riderColor(_riderStatus).withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: _riderColor(_riderStatus).withOpacity(0.2),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.delivery_dining,
+                            color: _riderColor(_riderStatus),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'สถานะไรเดอร์: ${_riderLabel(_riderStatus)}',
+                              style: TextStyle(
+                                color: _riderColor(_riderStatus),
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+
+            if (widget.slipUrl.isNotEmpty)
+              _SectionCard(
+                title: 'หลักฐานการโอนเงิน',
+                icon: Icons.image,
+                color: Colors.green,
+                child: GestureDetector(
+                  onTap: () => _showImage(widget.slipUrl),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: Image.network(
+                      widget.slipUrl,
+                      height: 210,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        height: 210,
+                        width: double.infinity,
+                        alignment: Alignment.center,
+                        color: Colors.grey.shade200,
+                        child: const Text('โหลดรูปสลิปไม่สำเร็จ'),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+            _OrderItemsList(
+              orderId: widget.orderId,
+              storeIdFilter: widget.storeIdFilter,
+            ),
 
             const SizedBox(height: 10),
 
             SizedBox(
               width: double.infinity,
+              height: 48,
               child: ElevatedButton.icon(
                 onPressed: (!_isPickup && _riderStatus == 'success') || _deleting
                     ? null
                     : _deleteOrder,
-                icon: const Icon(Icons.delete),
-                label: const Text('ยกเลิกออเดอร์'),
+                icon: _deleting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2.2,
+                        ),
+                      )
+                    : const Icon(Icons.delete),
+                label: Text(_deleting ? 'กำลังยกเลิก...' : 'ยกเลิกออเดอร์'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.red,
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 10),
-          ],
-        ),
-        children: [
-          if (widget.slipUrl.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: GestureDetector(
-                onTap: () => _showImage(widget.slipUrl),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.network(
-                    widget.slipUrl,
-                    height: 200,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                      height: 200,
-                      width: double.infinity,
-                      color: Colors.grey[300],
-                      alignment: Alignment.center,
-                      child: const Text('โหลดรูปสลิปไม่สำเร็จ'),
-                    ),
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: Colors.grey.shade300,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15),
                   ),
                 ),
               ),
             ),
-          _OrderItemsList(
-            orderId: widget.orderId,
-            storeIdFilter: widget.storeIdFilter,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionCard extends StatelessWidget {
+  const _SectionCard({
+    required this.title,
+    required this.icon,
+    required this.color,
+    required this.child,
+  });
+
+  final String title;
+  final IconData icon;
+  final Color color;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: color.withOpacity(0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: color.withOpacity(0.13),
+                child: Icon(icon, color: color, size: 18),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    if (value.trim().isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: Colors.grey.shade700),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '$label: $value',
+              style: const TextStyle(fontSize: 14),
+            ),
           ),
         ],
       ),
@@ -467,7 +661,78 @@ class _OrderCardState extends State<_OrderCard> {
   }
 }
 
-/* ================= ITEMS ================= */
+class _DropdownBox extends StatelessWidget {
+  const _DropdownBox({
+    required this.title,
+    required this.icon,
+    required this.value,
+    required this.color,
+    required this.items,
+    required this.onChanged,
+  });
+
+  final String title;
+  final IconData icon;
+  final String value;
+  final Color color;
+  final List<DropdownMenuItem<String>> items;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withOpacity(0.25)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: value,
+                isExpanded: true,
+                items: items,
+                onChanged: onChanged,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({
+    required this.label,
+    required this.color,
+  });
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Chip(
+      visualDensity: VisualDensity.compact,
+      backgroundColor: color.withOpacity(0.12),
+      side: BorderSide(color: color.withOpacity(0.28)),
+      label: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.bold,
+          fontSize: 12,
+        ),
+      ),
+    );
+  }
+}
 
 class _OrderItemsList extends StatelessWidget {
   const _OrderItemsList({
@@ -493,35 +758,164 @@ class _OrderItemsList extends StatelessWidget {
       stream: q.snapshots(),
       builder: (context, snap) {
         if (!snap.hasData) {
-          return const LinearProgressIndicator();
+          return const Padding(
+            padding: EdgeInsets.all(12),
+            child: LinearProgressIndicator(),
+          );
         }
 
         final itemDocs = snap.data!.docs;
 
         if (itemDocs.isEmpty) {
-          return const Padding(
-            padding: EdgeInsets.only(bottom: 12),
+          return const _SectionCard(
+            title: 'รายการสินค้า',
+            icon: Icons.shopping_bag,
+            color: Colors.orange,
             child: Text('ไม่มีรายการสินค้า'),
           );
         }
 
-        return Column(
-          children: itemDocs.map((doc) {
-            final x = doc.data() as Map<String, dynamic>;
+        return _SectionCard(
+          title: 'รายการสินค้า',
+          icon: Icons.shopping_bag,
+          color: Colors.orange,
+          child: Column(
+            children: itemDocs.map((doc) {
+              final x = doc.data() as Map<String, dynamic>;
 
-            final name = x['name'] ?? '';
-            final price = (x['price'] as num?)?.toDouble() ?? 0;
-            final qty = (x['qty'] as num?)?.toInt() ?? 1;
-            final total = price * qty;
+              final name = (x['name'] ?? '').toString();
+              final price = (x['price'] as num?)?.toDouble() ?? 0;
+              final qty = (x['qty'] as num?)?.toInt() ?? 1;
+              final total = price * qty;
+              final imageUrl = (x['imageUrl'] ?? '').toString();
 
-            return ListTile(
-              title: Text(name),
-              subtitle: Text('฿${price.toStringAsFixed(2)} x $qty'),
-              trailing: Text('฿${total.toStringAsFixed(2)}'),
-            );
-          }).toList(),
+              return Container(
+                margin: const EdgeInsets.only(bottom: 9),
+                padding: const EdgeInsets.all(9),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(13),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: Row(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: imageUrl.isNotEmpty
+                          ? Image.network(
+                              imageUrl,
+                              width: 52,
+                              height: 52,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) =>
+                                  _ProductPlaceholder(),
+                            )
+                          : _ProductPlaceholder(),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style:
+                                const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            '฿${price.toStringAsFixed(2)} x $qty',
+                            style: TextStyle(
+                              color: Colors.grey.shade700,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Text(
+                      '฿${total.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        color: Colors.orange,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
         );
       },
+    );
+  }
+}
+
+class _ProductPlaceholder extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 52,
+      height: 52,
+      color: Colors.grey.shade200,
+      child: const Icon(Icons.fastfood, color: Colors.grey),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(22),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 12,
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 62, color: color),
+            const SizedBox(height: 12),
+            Text(
+              title,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 17,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              subtitle,
+              style: TextStyle(color: Colors.grey.shade600),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

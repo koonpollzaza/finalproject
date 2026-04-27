@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -23,57 +24,88 @@ class PaymentPage extends StatefulWidget {
 class _PaymentPageState extends State<PaymentPage> {
   int secondsLeft = 120;
   Timer? timer;
-  late String qrData;
 
   File? slipImage;
   bool uploading = false;
+  bool loadingOrder = true;
 
   final String promptPayId = "0968355416";
 
-  // ✅ ค่าจัดส่ง
-  final double deliveryFee = 15.0;
+  final double normalDeliveryFee = 15.0;
 
-  // ✅ ยอดรวมทั้งหมด = ค่าอาหาร + ค่าส่ง
-  late double finalTotal;
+  bool isPickUp = false;
+  double deliveryFee = 0.0;
+  double finalTotal = 0.0;
+  String qrData = "";
 
   @override
   void initState() {
     super.initState();
-
-    finalTotal = widget.total + deliveryFee;
-
-    // ✅ QR ใช้ยอดรวมทั้งหมด
+    finalTotal = widget.total;
     qrData = generatePromptPayQR(promptPayId, finalTotal);
 
+    loadOrderData();
     startTimer();
   }
 
-  String generatePromptPayQR(String mobile, double amount) {
-  String format(String id, String value) =>
-      id + value.length.toString().padLeft(2, '0') + value;
+  Future<void> loadOrderData() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('orders')
+          .doc(widget.orderId)
+          .get();
 
-  // ✅ แปลงเบอร์ PromptPay ให้ถูกต้อง
-  if (mobile.startsWith("0")) {
-    mobile = "0066${mobile.substring(1)}";
+      final data = doc.data();
+
+      isPickUp = data?['PickUp'] == true;
+
+      deliveryFee = isPickUp ? 0.0 : normalDeliveryFee;
+      finalTotal = widget.total + deliveryFee;
+
+      qrData = generatePromptPayQR(promptPayId, finalTotal);
+
+      if (mounted) {
+        setState(() {
+          loadingOrder = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          loadingOrder = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("โหลดข้อมูลออเดอร์ไม่สำเร็จ: $e")),
+        );
+      }
+    }
   }
 
-  String qr = format("00", "01") +
-      format("01", "11") +
-      format(
-        "29",
-        format("00", "A000000677010111") +
-            format("01", mobile),
-      ) +
-      format("52", "0000") +
-      format("53", "764") +
-      format("54", amount.toStringAsFixed(2)) +
-      format("58", "TH");
+  String generatePromptPayQR(String mobile, double amount) {
+    String format(String id, String value) =>
+        id + value.length.toString().padLeft(2, '0') + value;
 
-  String crc = calculateCRC("${qr}6304");
-  qr += format("63", crc);
+    if (mobile.startsWith("0")) {
+      mobile = "0066${mobile.substring(1)}";
+    }
 
-  return qr;
-}
+    String qr = format("00", "01") +
+        format("01", "11") +
+        format(
+          "29",
+          format("00", "A000000677010111") + format("01", mobile),
+        ) +
+        format("52", "0000") +
+        format("53", "764") +
+        format("54", amount.toStringAsFixed(2)) +
+        format("58", "TH");
+
+    String crc = calculateCRC("${qr}6304");
+    qr += format("63", crc);
+
+    return qr;
+  }
 
   String calculateCRC(String input) {
     int crc = 0xFFFF;
@@ -130,7 +162,8 @@ class _PaymentPageState extends State<PaymentPage> {
         'payment': 'pending',
         'slipUrl': url,
 
-        // ✅ เก็บค่าจัดส่งและยอดรวมลง Firestore
+        // รับเองที่ร้าน PickUp = true ค่าส่งจะเป็น 0
+        'PickUp': isPickUp,
         'deliveryFee': deliveryFee,
         'foodTotal': widget.total,
         'total': finalTotal,
@@ -156,7 +189,9 @@ class _PaymentPageState extends State<PaymentPage> {
       if (secondsLeft == 0) {
         handleTimeout();
       } else {
-        setState(() => secondsLeft--);
+        if (mounted) {
+          setState(() => secondsLeft--);
+        }
       }
     });
   }
@@ -207,106 +242,120 @@ class _PaymentPageState extends State<PaymentPage> {
         appBar: AppBar(
           automaticallyImplyLeading: false,
           title: const Text("PromptPay Payment"),
+          backgroundColor: Colors.orange,
         ),
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            children: [
-              const Text(
-                "สแกนเพื่อชำระเงิน",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-
-              const SizedBox(height: 20),
-
-              QrImageView(
-                data: qrData,
-                size: 240,
-              ),
-
-              const SizedBox(height: 20),
-
-              Card(
-                elevation: 2,
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text("ค่าอาหาร"),
-                          Text("${widget.total.toStringAsFixed(2)} บาท"),
-                        ],
+        body: loadingOrder
+            ? const Center(child: CircularProgressIndicator())
+            : SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    const Text(
+                      "สแกนเพื่อชำระเงิน",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
                       ),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text("ค่าจัดส่ง"),
-                          Text("${deliveryFee.toStringAsFixed(2)} บาท"),
-                        ],
-                      ),
-                      const Divider(height: 24),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            "ยอดรวมทั้งหมด",
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    QrImageView(
+                      data: qrData,
+                      size: 240,
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    Card(
+                      elevation: 2,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text("ค่าอาหาร"),
+                                Text("${widget.total.toStringAsFixed(2)} บาท"),
+                              ],
                             ),
-                          ),
-                          Text(
-                            "${finalTotal.toStringAsFixed(2)} บาท",
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.green,
+                            const SizedBox(height: 8),
+
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(isPickUp ? "รับเองที่ร้าน" : "ค่าจัดส่ง"),
+                                Text("${deliveryFee.toStringAsFixed(2)} บาท"),
+                              ],
                             ),
-                          ),
-                        ],
+
+                            const Divider(height: 24),
+
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text(
+                                  "ยอดรวมทั้งหมด",
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  "${finalTotal.toStringAsFixed(2)} บาท",
+                                  style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.green,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
-                    ],
-                  ),
+                    ),
+
+                    const SizedBox(height: 15),
+
+                    Text(
+                      "เวลาที่เหลือ $minutes:$seconds",
+                      style: const TextStyle(
+                        color: Colors.red,
+                        fontSize: 18,
+                      ),
+                    ),
+
+                    const Divider(height: 40),
+
+                    if (slipImage != null)
+                      Image.file(
+                        slipImage!,
+                        height: 180,
+                      ),
+
+                    ElevatedButton(
+                      onPressed: pickImage,
+                      child: const Text("แนบสลิป"),
+                    ),
+
+                    const SizedBox(height: 15),
+
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: uploading ? null : uploadSlip,
+                        child: uploading
+                            ? const CircularProgressIndicator(
+                                color: Colors.white,
+                              )
+                            : const Text("ส่งสลิปเพื่อยืนยัน"),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-
-              const SizedBox(height: 15),
-
-              Text(
-                "เวลาที่เหลือ $minutes:$seconds",
-                style: const TextStyle(color: Colors.red, fontSize: 18),
-              ),
-
-              const Divider(height: 40),
-
-              if (slipImage != null)
-                Image.file(
-                  slipImage!,
-                  height: 180,
-                ),
-
-              ElevatedButton(
-                onPressed: pickImage,
-                child: const Text("แนบสลิป"),
-              ),
-
-              const SizedBox(height: 15),
-
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: uploading ? null : uploadSlip,
-                  child: uploading
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text("ส่งสลิปเพื่อยืนยัน"),
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

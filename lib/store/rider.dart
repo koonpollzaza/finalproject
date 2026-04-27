@@ -13,23 +13,23 @@ class RiderHomePage extends StatelessWidget {
     required this.riderId,
   });
 
-  /// ===============================
-  /// โหลดชื่อ Rider
-  /// ===============================
   Future<String> _loadRiderName() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+
+    if (uid == null) return 'Rider';
+
     final snap = await FirebaseFirestore.instance
         .collection('riders')
-        .where('phone', isEqualTo: riderId)
+        .where('userUid', isEqualTo: uid)
         .limit(1)
         .get();
 
     if (snap.docs.isEmpty) return 'Rider';
-    return snap.docs.first.data()['name'] ?? 'Rider';
+
+    final data = snap.docs.first.data();
+    return data['name']?.toString() ?? 'Rider';
   }
 
-  /// ===============================
-  /// Logout
-  /// ===============================
   Future<void> _logout(BuildContext context) async {
     await FirebaseAuth.instance.signOut();
 
@@ -42,28 +42,52 @@ class RiderHomePage extends StatelessWidget {
     }
   }
 
-  /// ===============================
-  /// รับงาน (กันรับซ้อน)
-  /// ===============================
   Future<void> _acceptOrder({
     required BuildContext context,
     required DocumentSnapshot<Map<String, dynamic>> doc,
-    required String riderName,
   }) async {
     final orderRef = doc.reference;
 
     try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+
+      if (uid == null) {
+        throw Exception('User not login');
+      }
+
+      final riderSnap = await FirebaseFirestore.instance
+          .collection('riders')
+          .where('userUid', isEqualTo: uid)
+          .limit(1)
+          .get();
+
+      if (riderSnap.docs.isEmpty) {
+        throw Exception('Rider not found');
+      }
+
+      final riderData = riderSnap.docs.first.data();
+
+      final riderName = riderData['name']?.toString() ?? 'Rider';
+      final riderPhone = riderData['phone']?.toString() ?? '';
+
       await FirebaseFirestore.instance.runTransaction((transaction) async {
         final freshSnap = await transaction.get(orderRef);
-        final currentStatus = freshSnap.data()?['riderStatus'];
+        final orderData = freshSnap.data();
+
+        if (orderData == null) {
+          throw Exception('Order not found');
+        }
+
+        final currentStatus = orderData['riderStatus'];
 
         if (currentStatus != 'pending') {
-          throw Exception("Order already accepted");
+          throw Exception('Order already accepted');
         }
 
         transaction.update(orderRef, {
-          'riderId': riderId,
+          'riderId': uid,
           'riderName': riderName,
+          'riderPhone': riderPhone,
           'riderStatus': 'success',
         });
       });
@@ -77,12 +101,14 @@ class RiderHomePage extends StatelessWidget {
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('งานนี้มีไรเดอร์รับไปแล้ว'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('งานนี้มีไรเดอร์รับไปแล้ว หรือไม่พบข้อมูลไรเดอร์'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -107,7 +133,6 @@ class RiderHomePage extends StatelessWidget {
               ],
             ),
             actions: [
-              // ปุ่มไปหน้าประวัติ
               IconButton(
                 icon: const Icon(Icons.history),
                 tooltip: 'ประวัติคำสั่งซื้อ',
@@ -116,14 +141,13 @@ class RiderHomePage extends StatelessWidget {
                     context,
                     MaterialPageRoute(
                       builder: (_) => HistoryRiderPage(
-                        riderId: riderId,
+                        riderId:
+                            FirebaseAuth.instance.currentUser?.uid ?? riderId,
                       ),
                     ),
                   );
                 },
               ),
-
-              /// 🔐 ปุ่ม Logout
               IconButton(
                 icon: const Icon(Icons.logout),
                 onPressed: () async {
@@ -152,11 +176,6 @@ class RiderHomePage extends StatelessWidget {
               ),
             ],
           ),
-
-          /// ===============================
-          /// แสดงเฉพาะงานที่ยังไม่มีใครรับ
-          /// และ "ไม่ใช่" รับอาหารที่ร้าน
-          /// ===============================
           body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
             stream: FirebaseFirestore.instance
                 .collection('orders')
@@ -166,9 +185,7 @@ class RiderHomePage extends StatelessWidget {
                 .snapshots(),
             builder: (context, snap) {
               if (snap.connectionState == ConnectionState.waiting) {
-                return const Center(
-                  child: CircularProgressIndicator(),
-                );
+                return const Center(child: CircularProgressIndicator());
               }
 
               if (snap.hasError) {
@@ -179,11 +196,9 @@ class RiderHomePage extends StatelessWidget {
 
               final allOrders = snap.data?.docs ?? [];
 
-              /// ✅ ตัด order ที่เป็น "รับอาหารที่ร้าน" ออก
               final orders = allOrders.where((doc) {
                 final data = doc.data();
-                final location =
-                    (data['location'] ?? '').toString().trim().toLowerCase();
+                final location = (data['location'] ?? '').toString().trim();
 
                 return location != 'รับอาหารที่ร้าน';
               }).toList();
@@ -207,13 +222,13 @@ class RiderHomePage extends StatelessWidget {
                     margin: const EdgeInsets.all(10),
                     child: ListTile(
                       title: Text(
-                        data['fullname'] ?? '',
+                        data['fullname']?.toString() ?? '',
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                       subtitle: Text(
-                        data['location'] ?? '',
+                        data['location']?.toString() ?? '',
                       ),
                       trailing: ElevatedButton(
                         child: const Text('รับงาน'),
@@ -221,7 +236,6 @@ class RiderHomePage extends StatelessWidget {
                           _acceptOrder(
                             context: context,
                             doc: doc,
-                            riderName: riderName,
                           );
                         },
                       ),
