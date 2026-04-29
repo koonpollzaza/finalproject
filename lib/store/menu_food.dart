@@ -1,7 +1,8 @@
 // lib/menu_food.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import 'cart.dart';
 
 class StoreDetailPage extends StatelessWidget {
@@ -25,7 +26,6 @@ class StoreDetailPage extends StatelessWidget {
     return Scaffold(
       body: Column(
         children: [
-          /// HEADER ร้าน
           Stack(
             children: [
               imageUrl.isNotEmpty
@@ -42,7 +42,6 @@ class StoreDetailPage extends StatelessWidget {
                         child: Icon(Icons.store, size: 80),
                       ),
                     ),
-
               Positioned(
                 top: 40,
                 left: 10,
@@ -57,7 +56,6 @@ class StoreDetailPage extends StatelessWidget {
             ],
           ),
 
-          /// ชื่อร้าน
           Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -65,7 +63,9 @@ class StoreDetailPage extends StatelessWidget {
                 Text(
                   name,
                   style: const TextStyle(
-                      fontSize: 24, fontWeight: FontWeight.bold),
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 6),
                 Text(
@@ -79,11 +79,16 @@ class StoreDetailPage extends StatelessWidget {
 
           const Divider(),
 
-          /// รายการเมนู
           Expanded(
             child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
               stream: menusRef.orderBy('name').snapshots(),
               builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Text('เกิดข้อผิดพลาด: ${snapshot.error}'),
+                  );
+                }
+
                 if (!snapshot.hasData) {
                   return const Center(child: CircularProgressIndicator());
                 }
@@ -125,6 +130,14 @@ class StoreDetailPage extends StatelessWidget {
                                   width: 70,
                                   height: 70,
                                   fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) {
+                                    return Container(
+                                      width: 70,
+                                      height: 70,
+                                      color: Colors.grey[300],
+                                      child: const Icon(Icons.fastfood),
+                                    );
+                                  },
                                 )
                               : Container(
                                   width: 70,
@@ -140,8 +153,9 @@ class StoreDetailPage extends StatelessWidget {
                         subtitle: Text(
                           "${price.toStringAsFixed(0)} บาท",
                           style: const TextStyle(
-                              color: Colors.red,
-                              fontWeight: FontWeight.bold),
+                            color: Colors.red,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         trailing: const Icon(Icons.arrow_forward_ios, size: 18),
                         onTap: () {
@@ -190,30 +204,71 @@ class MenuItemPage extends StatefulWidget {
 
 class _MenuItemPageState extends State<MenuItemPage> {
   int qty = 1;
+  bool adding = false;
 
-  Future<void> _addToCart() async {
-    final user = FirebaseAuth.instance.currentUser;
+  String _formatPhoneNumber(String phone) {
+    phone = phone.trim().replaceAll(' ', '').replaceAll('-', '');
 
-    if (user == null) {
-      throw Exception("กรุณาเข้าสู่ระบบก่อน");
+    if (phone.startsWith('+66')) {
+      phone = '0${phone.substring(3)}';
+    } else if (phone.startsWith('66')) {
+      phone = '0${phone.substring(2)}';
     }
 
-    final uid = user.uid;
-    final docId = '${uid}_${widget.storeId}_${widget.menuId}';
+    return phone;
+  }
 
-    final ref = FirebaseFirestore.instance.collection('cart').doc(docId);
+  Future<void> _addToCart() async {
+    setState(() => adding = true);
 
-    await ref.set({
-      'storeId': widget.storeId,
-      'userId': uid,
-      'menuId': widget.menuId,
-      'name': widget.name,
-      'price': widget.price,
-      'imageUrl': widget.imageUrl,
-      'qty': FieldValue.increment(qty),
-      'createdAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      final phoneRaw = prefs.getString('loginPhone') ?? '';
+      final loginPhone = _formatPhoneNumber(phoneRaw);
+
+      if (loginPhone.isEmpty) {
+        throw Exception("กรุณาเข้าสู่ระบบก่อน");
+      }
+
+      final docId = '${loginPhone}_${widget.storeId}_${widget.menuId}';
+
+      final ref = FirebaseFirestore.instance.collection('cart').doc(docId);
+
+      await ref.set({
+        'storeId': widget.storeId,
+        'userPhone': loginPhone,
+        'menuId': widget.menuId,
+        'name': widget.name,
+        'price': widget.price,
+        'imageUrl': widget.imageUrl,
+        'qty': FieldValue.increment(qty),
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('เพิ่ม ${widget.name} x$qty แล้ว'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceAll('Exception: ', '')),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => adding = false);
+      }
+    }
   }
 
   @override
@@ -232,18 +287,24 @@ class _MenuItemPageState extends State<MenuItemPage> {
                 MaterialPageRoute(builder: (_) => const CartPage()),
               );
             },
-          )
+          ),
         ],
       ),
       body: Column(
         children: [
-          /// รูปอาหาร
           widget.imageUrl.isNotEmpty
               ? Image.network(
                   widget.imageUrl,
                   height: 260,
                   width: double.infinity,
                   fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) {
+                    return Container(
+                      height: 260,
+                      color: Colors.grey[300],
+                      child: const Icon(Icons.fastfood, size: 80),
+                    );
+                  },
                 )
               : Container(
                   height: 260,
@@ -255,23 +316,27 @@ class _MenuItemPageState extends State<MenuItemPage> {
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
-                Text(widget.name,
-                    style: const TextStyle(
-                        fontSize: 24, fontWeight: FontWeight.bold)),
+                Text(
+                  widget.name,
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
 
                 const SizedBox(height: 8),
 
                 Text(
                   "${widget.price.toStringAsFixed(0)} บาท",
                   style: const TextStyle(
-                      fontSize: 20,
-                      color: Colors.red,
-                      fontWeight: FontWeight.bold),
+                    fontSize: 20,
+                    color: Colors.red,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
 
                 const SizedBox(height: 20),
 
-                /// ปุ่มเพิ่มลดจำนวน
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -279,13 +344,17 @@ class _MenuItemPageState extends State<MenuItemPage> {
                       iconSize: 32,
                       icon: const Icon(Icons.remove_circle),
                       onPressed: () {
-                        if (qty > 1) setState(() => qty--);
+                        if (qty > 1) {
+                          setState(() => qty--);
+                        }
                       },
                     ),
                     Text(
                       "$qty",
                       style: const TextStyle(
-                          fontSize: 22, fontWeight: FontWeight.bold),
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     IconButton(
                       iconSize: 32,
@@ -300,33 +369,27 @@ class _MenuItemPageState extends State<MenuItemPage> {
 
           const Spacer(),
 
-          /// ปุ่มเพิ่มตะกร้า
           Padding(
             padding: const EdgeInsets.all(16),
             child: ElevatedButton(
-              onPressed: () async {
-                await _addToCart();
-
-                if (!mounted) return;
-
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('เพิ่ม ${widget.name} x$qty แล้ว'),
-                  ),
-                );
-              },
+              onPressed: adding ? null : _addToCart,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
                 minimumSize: const Size(double.infinity, 55),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              child: Text(
-                "เพิ่มลงตะกร้า • ${total.toStringAsFixed(0)} บาท",
-                style:
-                    const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
+              child: adding
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : Text(
+                      "เพิ่มลงตะกร้า • ${total.toStringAsFixed(0)} บาท",
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
             ),
           ),
         ],

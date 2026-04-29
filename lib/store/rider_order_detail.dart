@@ -2,9 +2,12 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+import 'package:finalproject/chat_page.dart';
 
 class RiderOrderDetailPage extends StatefulWidget {
   final String orderId;
@@ -23,11 +26,109 @@ class _RiderOrderDetailPageState extends State<RiderOrderDetailPage> {
   bool _isDeliveryConfirmed = false;
 
   Future<void> _openMap(double lat, double lng) async {
+    if (lat == 0 || lng == 0) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('ไม่พบพิกัดแผนที่'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     final uri = Uri.parse(
       "https://www.google.com/maps/dir/?api=1&destination=$lat,$lng",
     );
 
     await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  Future<void> _openRiderStoreChat({
+    required String orderId,
+    required String storeId,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('ไม่พบข้อมูลไรเดอร์ กรุณาเข้าสู่ระบบใหม่'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (storeId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('ไม่พบข้อมูลร้านค้า'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatPage(
+          orderId: orderId,
+          chatType: 'rider_store',
+          senderType: 'rider',
+          senderId: user.uid,
+          senderName: 'ไรเดอร์',
+          storeId: storeId,
+          riderId: user.uid,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openRiderCustomerChat({
+    required String orderId,
+    required String customerPhone,
+    required String customerName,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('ไม่พบข้อมูลไรเดอร์ กรุณาเข้าสู่ระบบใหม่'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (customerPhone.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('ไม่พบเบอร์ลูกค้า'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatPage(
+          orderId: orderId,
+          chatType: 'customer_rider',
+          senderType: 'rider',
+          senderId: user.uid,
+          senderName: 'ไรเดอร์',
+          riderId: user.uid,
+          customerPhone: customerPhone,
+          customerName: customerName,
+        ),
+      ),
+    );
   }
 
   Future<void> _openCamera() async {
@@ -44,12 +145,14 @@ class _RiderOrderDetailPageState extends State<RiderOrderDetailPage> {
         });
 
         if (!mounted) return;
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('ยืนยันการจัดส่งแล้ว')),
         );
       }
     } catch (e) {
       if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('เปิดกล้องไม่สำเร็จ: $e')),
       );
@@ -102,6 +205,7 @@ class _RiderOrderDetailPageState extends State<RiderOrderDetailPage> {
 
       if (imageUrl == null || imageUrl.isEmpty) {
         if (!mounted) return;
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('อัปโหลดรูปไม่สำเร็จ')),
         );
@@ -123,11 +227,14 @@ class _RiderOrderDetailPageState extends State<RiderOrderDetailPage> {
       Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('เกิดข้อผิดพลาด: $e')),
       );
     } finally {
-      if (mounted) setState(() => _isUploading = false);
+      if (mounted) {
+        setState(() => _isUploading = false);
+      }
     }
   }
 
@@ -244,10 +351,10 @@ class _RiderOrderDetailPageState extends State<RiderOrderDetailPage> {
                               height: 58,
                               fit: BoxFit.cover,
                               errorBuilder: (context, error, stackTrace) {
-                                return _FoodPlaceholder();
+                                return const _FoodPlaceholder();
                               },
                             )
-                          : _FoodPlaceholder(),
+                          : const _FoodPlaceholder(),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -317,8 +424,6 @@ class _RiderOrderDetailPageState extends State<RiderOrderDetailPage> {
             }
 
             final fullname = (data['fullname'] ?? '').toString();
-
-            // ✅ ดึงเบอร์ติดต่อลูกค้าจาก collection orders field phone
             final customerPhone = (data['phone'] ?? '').toString();
 
             final location = (data['location'] ?? '').toString();
@@ -336,7 +441,9 @@ class _RiderOrderDetailPageState extends State<RiderOrderDetailPage> {
                 !_isDeliveryConfirmed &&
                 _pickedImage == null) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted) setState(() => _isDeliveryConfirmed = true);
+                if (mounted) {
+                  setState(() => _isDeliveryConfirmed = true);
+                }
               });
             }
 
@@ -394,18 +501,46 @@ class _RiderOrderDetailPageState extends State<RiderOrderDetailPage> {
                                     text: isSuccess
                                         ? 'จัดส่งสำเร็จ'
                                         : 'กำลังจัดส่ง',
-                                    color:
-                                        isSuccess ? Colors.green : Colors.orange,
+                                    color: isSuccess
+                                        ? Colors.green
+                                        : Colors.orange,
                                     icon: isSuccess
                                         ? Icons.done_all
                                         : Icons.delivery_dining,
                                   ),
                                 ],
                               ),
+                              const SizedBox(height: 12),
+                              SizedBox(
+                                width: double.infinity,
+                                height: 46,
+                                child: ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.cyan,
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                  ),
+                                  icon: const Icon(Icons.chat),
+                                  label: const Text(
+                                    'แชทกับลูกค้า',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  onPressed: () {
+                                    _openRiderCustomerChat(
+                                      orderId: widget.orderId,
+                                      customerPhone: customerPhone,
+                                      customerName: fullname,
+                                    );
+                                  },
+                                ),
+                              ),
                             ],
                           ),
                         ),
-
                         if (storeId.isNotEmpty)
                           FutureBuilder<DocumentSnapshot>(
                             future: FirebaseFirestore.instance
@@ -483,22 +618,47 @@ class _RiderOrderDetailPageState extends State<RiderOrderDetailPage> {
                                             ),
                                             icon: const Icon(Icons.navigation),
                                             label: const Text("ไปหาลูกค้า"),
-                                            onPressed: () =>
-                                                _openMap(lat, lng),
+                                            onPressed: () => _openMap(lat, lng),
                                           ),
                                         ),
                                       ],
+                                    ),
+                                    const SizedBox(height: 10),
+                                    SizedBox(
+                                      width: double.infinity,
+                                      height: 46,
+                                      child: ElevatedButton.icon(
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.deepPurple,
+                                          foregroundColor: Colors.white,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(14),
+                                          ),
+                                        ),
+                                        icon: const Icon(Icons.chat),
+                                        label: const Text(
+                                          'แชทกับร้าน',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        onPressed: () {
+                                          _openRiderStoreChat(
+                                            orderId: widget.orderId,
+                                            storeId: storeId,
+                                          );
+                                        },
+                                      ),
                                     ),
                                   ],
                                 ),
                               );
                             },
                           ),
-
                         _buildDeliveryImageSection(
                           deliveryImageUrl: deliveryImageUrl,
                         ),
-
                         if (status == 'pending')
                           Container(
                             width: double.infinity,
@@ -542,13 +702,11 @@ class _RiderOrderDetailPageState extends State<RiderOrderDetailPage> {
                               ],
                             ),
                           ),
-
                         _buildOrderItems(orderRef),
                       ],
                     ),
                   ),
                 ),
-
                 if (status == 'pending')
                   _BottomActionBar(
                     isUploading: _isUploading,
@@ -805,6 +963,8 @@ class _BottomActionBar extends StatelessWidget {
 }
 
 class _FoodPlaceholder extends StatelessWidget {
+  const _FoodPlaceholder();
+
   @override
   Widget build(BuildContext context) {
     return Container(

@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -7,6 +8,7 @@ import 'add_menu.dart';
 import 'history_store.dart';
 import 'pending_store.dart';
 import 'select_location_store.dart';
+import 'store_chat_list.dart';
 import '../login.dart';
 
 class StoreHomePage extends StatefulWidget {
@@ -87,7 +89,7 @@ class _StoreHomePageState extends State<StoreHomePage> {
         .where('status', isEqualTo: 'pending')
         .snapshots()
         .listen((snapshot) {
-      for (var change in snapshot.docChanges) {
+      for (final change in snapshot.docChanges) {
         if (change.type == DocumentChangeType.added) {
           if (!mounted) return;
 
@@ -161,8 +163,8 @@ class _StoreHomePageState extends State<StoreHomePage> {
         final storeId = storeRef.id;
         final storeData = storeDoc.data();
 
-        final storeName = storeData['name'] ?? 'ร้านของฉัน';
-        final isOpen = storeData['isOpen'] ?? false;
+        final storeName = (storeData['name'] ?? 'ร้านของฉัน').toString();
+        final isOpen = storeData['isOpen'] == true;
 
         WidgetsBinding.instance.addPostFrameCallback((_) {
           listenNewOrders(storeId);
@@ -190,7 +192,7 @@ class _StoreHomePageState extends State<StoreHomePage> {
               ],
             ),
             centerTitle: true,
-            backgroundColor: Colors.orange,
+            backgroundColor: const Color.fromARGB(255, 0, 51, 255),
             actions: [
               Padding(
                 padding: const EdgeInsets.only(right: 8),
@@ -199,7 +201,7 @@ class _StoreHomePageState extends State<StoreHomePage> {
                   children: [
                     Text(
                       isOpen ? "เปิด" : "ปิด",
-                      style: TextStyle(
+                      style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
                       ),
@@ -244,11 +246,11 @@ class _StoreHomePageState extends State<StoreHomePage> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        isOpen
-                            ? 'ร้านของคุณเปิดอยู่'
-                            : 'ร้านของคุณปิดอยู่',
+                        isOpen ? 'ร้านของคุณเปิดอยู่' : 'ร้านของคุณปิดอยู่',
                         style: TextStyle(
-                          color: isOpen ? Colors.green.shade900 : Colors.red.shade900,
+                          color: isOpen
+                              ? Colors.green.shade900
+                              : Colors.red.shade900,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -285,9 +287,11 @@ class _StoreHomePageState extends State<StoreHomePage> {
                       itemBuilder: (_, i) {
                         final m = docs[i].data();
 
-                        final name = m['name'] ?? "";
-                        final img = m['imageUrl'] ?? "";
-                        final price = (m['price'] as num?)?.toDouble() ?? 0.0;
+                        final name = (m['name'] ?? "").toString();
+                        final img = (m['imageUrl'] ?? "").toString();
+                        final price = (m['price'] is num)
+                            ? (m['price'] as num).toDouble()
+                            : double.tryParse('${m['price']}') ?? 0.0;
 
                         return Container(
                           margin: const EdgeInsets.only(bottom: 14),
@@ -306,7 +310,8 @@ class _StoreHomePageState extends State<StoreHomePage> {
                                         width: 70,
                                         height: 70,
                                         fit: BoxFit.cover,
-                                        errorBuilder: (context, error, stackTrace) {
+                                        errorBuilder:
+                                            (context, error, stackTrace) {
                                           return Container(
                                             width: 70,
                                             height: 70,
@@ -338,16 +343,20 @@ class _StoreHomePageState extends State<StoreHomePage> {
                                 ),
                               ),
                               trailing: IconButton(
-                                icon: const Icon(Icons.delete, color: Colors.red),
+                                icon:
+                                    const Icon(Icons.delete, color: Colors.red),
                                 onPressed: () {
                                   showDialog(
                                     context: context,
                                     builder: (_) => AlertDialog(
                                       title: const Text("ลบเมนู"),
-                                      content: const Text("คุณต้องการลบเมนูนี้หรือไม่"),
+                                      content: const Text(
+                                        "คุณต้องการลบเมนูนี้หรือไม่",
+                                      ),
                                       actions: [
                                         TextButton(
-                                          onPressed: () => Navigator.pop(context),
+                                          onPressed: () =>
+                                              Navigator.pop(context),
                                           child: const Text("ยกเลิก"),
                                         ),
                                         TextButton(
@@ -395,7 +404,11 @@ class _StoreHomePageState extends State<StoreHomePage> {
               ),
               BottomNavigationBarItem(
                 icon: Icon(Icons.location_on),
-                label: 'ตำแหน่งร้าน',
+                label: 'ตำแหน่ง',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.chat),
+                label: 'แชท',
               ),
               BottomNavigationBarItem(
                 icon: Icon(Icons.logout),
@@ -434,6 +447,16 @@ class _StoreHomePageState extends State<StoreHomePage> {
                   ),
                 );
               } else if (index == 4) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => StoreChatListPage(
+                      storeId: storeId,
+                      storeName: storeName,
+                    ),
+                  ),
+                );
+              } else if (index == 5) {
                 await FirebaseAuth.instance.signOut();
 
                 if (!mounted) return;

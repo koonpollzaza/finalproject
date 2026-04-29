@@ -23,6 +23,7 @@ dependencies:
   # QR / PromptPay
   qr_flutter: ^4.1.0
   promptpay_qrcode_generate: 1.0.2
+  shared_preferences: ^2.2.3
 
   # อื่น ๆ
   image_picker: ^1.1.2

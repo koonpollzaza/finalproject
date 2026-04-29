@@ -79,7 +79,9 @@ class RiderHomePage extends StatelessWidget {
         }
 
         final currentStatus = orderData['riderStatus'];
+            //เช็คสถานะอีกครั้งเพื่อป้องกันการรับงานซ้ำ
 
+            //ถ้า riderStatus ไม่ใช่ "pending" เช่น "success" = มีคนรับไปแล้ว
         if (currentStatus != 'pending') {
           throw Exception('Order already accepted');
         }

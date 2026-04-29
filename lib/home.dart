@@ -48,7 +48,7 @@ class _HomePageState extends State<HomePage> {
 
       final files = [
         'image_store/Logo1.jpg',
-        'image_store/Logo1.png',
+        'image_store/milk.png',
       ];
 
       List<String> urls = [];
@@ -207,7 +207,7 @@ class _HomePageState extends State<HomePage> {
 
                           return _CategoryCard(
                             imageUrl: imageUrls[index],
-                            title: isFood ? 'ร้านกับข้าวแม่' : 'ร้านป้าดาวอาหารตามสั่ง',
+                            title: isFood ? 'ร้านกับข้าวแม่' : 'Milk Cafe',
                             subtitle: 'แตะเพื่อเลือกเมนู',
                             icon: isFood
                                 ? Icons.restaurant_menu

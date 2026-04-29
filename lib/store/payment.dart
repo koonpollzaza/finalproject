@@ -7,6 +7,8 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import 'package:finalproject/home.dart';
+
 class PaymentPage extends StatefulWidget {
   final String orderId;
   final double total;
@@ -22,30 +24,43 @@ class PaymentPage extends StatefulWidget {
 }
 
 class _PaymentPageState extends State<PaymentPage> {
-  int secondsLeft = 120;
+  int secondsLeft = 20;
   Timer? timer;
 
   File? slipImage;
+
   bool uploading = false;
   bool loadingOrder = true;
+  bool timeoutHandled = false;
 
   final String promptPayId = "0968355416";
 
-  final double normalDeliveryFee = 15.0;
-
   bool isPickUp = false;
+
+  double foodTotal = 0.0;
   double deliveryFee = 0.0;
+  double distanceKm = 0.0;
   double finalTotal = 0.0;
+
   String qrData = "";
 
   @override
   void initState() {
     super.initState();
+
+    foodTotal = widget.total;
     finalTotal = widget.total;
     qrData = generatePromptPayQR(promptPayId, finalTotal);
 
     loadOrderData();
-    startTimer();
+  }
+
+  double _toDouble(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is int) return value.toDouble();
+    if (value is double) return value;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString()) ?? 0.0;
   }
 
   Future<void> loadOrderData() async {
@@ -57,28 +72,54 @@ class _PaymentPageState extends State<PaymentPage> {
 
       final data = doc.data();
 
-      isPickUp = data?['PickUp'] == true;
+      if (data == null) {
+        throw Exception('ไม่พบข้อมูลออเดอร์');
+      }
 
-      deliveryFee = isPickUp ? 0.0 : normalDeliveryFee;
-      finalTotal = widget.total + deliveryFee;
+      isPickUp = data['PickUp'] == true;
+
+      foodTotal = _toDouble(data['subTotal']);
+
+      if (foodTotal == 0) {
+        foodTotal = _toDouble(data['foodTotal']);
+      }
+
+      if (foodTotal == 0) {
+        foodTotal = widget.total;
+      }
+
+      deliveryFee = isPickUp ? 0.0 : _toDouble(data['deliveryFee']);
+      distanceKm = isPickUp ? 0.0 : _toDouble(data['distanceKm']);
+
+      finalTotal = _toDouble(data['grandTotal']);
+
+      if (finalTotal == 0) {
+        finalTotal = _toDouble(data['total']);
+      }
+
+      if (finalTotal == 0) {
+        finalTotal = foodTotal + deliveryFee;
+      }
 
       qrData = generatePromptPayQR(promptPayId, finalTotal);
 
-      if (mounted) {
-        setState(() {
-          loadingOrder = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          loadingOrder = false;
-        });
+      if (!mounted) return;
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("โหลดข้อมูลออเดอร์ไม่สำเร็จ: $e")),
-        );
-      }
+      setState(() {
+        loadingOrder = false;
+      });
+
+      startTimer();
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        loadingOrder = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("โหลดข้อมูลออเดอร์ไม่สำเร็จ: $e")),
+      );
     }
   }
 
@@ -119,6 +160,7 @@ class _PaymentPageState extends State<PaymentPage> {
         } else {
           crc <<= 1;
         }
+
         crc &= 0xFFFF;
       }
     }
@@ -161,19 +203,25 @@ class _PaymentPageState extends State<PaymentPage> {
           .update({
         'payment': 'pending',
         'slipUrl': url,
-
-        // รับเองที่ร้าน PickUp = true ค่าส่งจะเป็น 0
         'PickUp': isPickUp,
+        'subTotal': foodTotal,
+        'foodTotal': foodTotal,
+        'distanceKm': distanceKm,
         'deliveryFee': deliveryFee,
-        'foodTotal': widget.total,
         'total': finalTotal,
+        'grandTotal': finalTotal,
+        'paidAmount': finalTotal,
+        'slipUploadedAt': FieldValue.serverTimestamp(),
       });
 
       timer?.cancel();
 
       if (!mounted) return;
+
       Navigator.pop(context);
     } catch (e) {
+      if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Upload failed: $e")),
       );
@@ -185,18 +233,26 @@ class _PaymentPageState extends State<PaymentPage> {
   }
 
   void startTimer() {
+    timer?.cancel();
+    secondsLeft = 20;
+
     timer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (secondsLeft == 0) {
+      if (secondsLeft <= 0) {
         handleTimeout();
       } else {
         if (mounted) {
-          setState(() => secondsLeft--);
+          setState(() {
+            secondsLeft--;
+          });
         }
       }
     });
   }
 
   Future<void> handleTimeout() async {
+    if (timeoutHandled) return;
+
+    timeoutHandled = true;
     timer?.cancel();
 
     if (!mounted) return;
@@ -204,25 +260,36 @@ class _PaymentPageState extends State<PaymentPage> {
     await showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text("หมดเวลา"),
-        content: const Text("ชำระเงินไม่สำเร็จ"),
+        content: const Text("ชำระเงินไม่สำเร็จ กรุณาสั่งซื้อใหม่อีกครั้ง"),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+
+              try {
+                await FirebaseFirestore.instance
+                    .collection('orders')
+                    .doc(widget.orderId)
+                    .delete();
+              } catch (e) {
+                debugPrint('Delete order timeout error: $e');
+              }
+
+              if (!mounted) return;
+
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (_) => const HomePage()),
+                (route) => false,
+              );
+            },
             child: const Text("ตกลง"),
           ),
         ],
       ),
     );
-
-    await FirebaseFirestore.instance
-        .collection('orders')
-        .doc(widget.orderId)
-        .delete();
-
-    if (!mounted) return;
-    Navigator.pop(context);
   }
 
   @override
@@ -231,11 +298,145 @@ class _PaymentPageState extends State<PaymentPage> {
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget buildPaymentContent() {
     final minutes = (secondsLeft ~/ 60).toString().padLeft(2, '0');
     final seconds = (secondsLeft % 60).toString().padLeft(2, '0');
 
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        children: [
+          const Text(
+            "สแกนเพื่อชำระเงิน",
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
+          QrImageView(
+            data: qrData,
+            size: 240,
+          ),
+
+          const SizedBox(height: 20),
+
+          Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text("ค่าสินค้า"),
+                      Text("${foodTotal.toStringAsFixed(2)} บาท"),
+                    ],
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  if (!isPickUp) ...[
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text("ระยะทาง"),
+                        Text("${distanceKm.toStringAsFixed(2)} กม."),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        isPickUp
+                            ? "รับเองที่ร้าน"
+                            : "ค่าจัดส่ง (กม.ละ 10 บาท)",
+                      ),
+                      Text("${deliveryFee.toStringAsFixed(2)} บาท"),
+                    ],
+                  ),
+
+                  const Divider(height: 24),
+
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        "ยอดรวมทั้งหมด",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        "${finalTotal.toStringAsFixed(2)} บาท",
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 15),
+
+          Text(
+            "เวลาที่เหลือ $minutes:$seconds",
+            style: const TextStyle(
+              color: Colors.red,
+              fontSize: 18,
+            ),
+          ),
+
+          const Divider(height: 40),
+
+          if (slipImage != null) ...[
+            Image.file(
+              slipImage!,
+              height: 180,
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          ElevatedButton(
+            onPressed: pickImage,
+            child: const Text("แนบสลิป"),
+          ),
+
+          const SizedBox(height: 15),
+
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: uploading ? null : uploadSlip,
+              child: uploading
+                  ? const CircularProgressIndicator(
+                      color: Colors.white,
+                    )
+                  : const Text("ส่งสลิปเพื่อยืนยัน"),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return WillPopScope(
       onWillPop: () async => false,
       child: Scaffold(
@@ -246,116 +447,7 @@ class _PaymentPageState extends State<PaymentPage> {
         ),
         body: loadingOrder
             ? const Center(child: CircularProgressIndicator())
-            : SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  children: [
-                    const Text(
-                      "สแกนเพื่อชำระเงิน",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    QrImageView(
-                      data: qrData,
-                      size: 240,
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    Card(
-                      elevation: 2,
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                const Text("ค่าอาหาร"),
-                                Text("${widget.total.toStringAsFixed(2)} บาท"),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(isPickUp ? "รับเองที่ร้าน" : "ค่าจัดส่ง"),
-                                Text("${deliveryFee.toStringAsFixed(2)} บาท"),
-                              ],
-                            ),
-
-                            const Divider(height: 24),
-
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                const Text(
-                                  "ยอดรวมทั้งหมด",
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                Text(
-                                  "${finalTotal.toStringAsFixed(2)} บาท",
-                                  style: const TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.green,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 15),
-
-                    Text(
-                      "เวลาที่เหลือ $minutes:$seconds",
-                      style: const TextStyle(
-                        color: Colors.red,
-                        fontSize: 18,
-                      ),
-                    ),
-
-                    const Divider(height: 40),
-
-                    if (slipImage != null)
-                      Image.file(
-                        slipImage!,
-                        height: 180,
-                      ),
-
-                    ElevatedButton(
-                      onPressed: pickImage,
-                      child: const Text("แนบสลิป"),
-                    ),
-
-                    const SizedBox(height: 15),
-
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: uploading ? null : uploadSlip,
-                        child: uploading
-                            ? const CircularProgressIndicator(
-                                color: Colors.white,
-                              )
-                            : const Text("ส่งสลิปเพื่อยืนยัน"),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            : buildPaymentContent(),
       ),
     );
   }

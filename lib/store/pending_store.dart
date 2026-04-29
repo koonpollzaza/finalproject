@@ -45,11 +45,31 @@ class PendingStorePage extends StatelessWidget {
 
             final status =
                 (data['status'] ?? 'pending').toString().toLowerCase();
+
             final payment =
                 (data['payment'] ?? 'pending').toString().toLowerCase();
+
             final riderStatus =
                 (data['riderStatus'] ?? 'pending').toString().toLowerCase();
+
+            final cancelRequestStatus =
+                (data['cancelRequestStatus'] ?? '').toString().toLowerCase();
+
             final location = (data['location'] ?? '').toString().trim();
+
+            final isCancelled = status == 'cancelled' ||
+                status == 'canceled' ||
+                status == 'cancel';
+
+            // ✅ แสดงออเดอร์ที่ถูกยกเลิกแล้วด้วย
+            if (isCancelled) {
+              return true;
+            }
+
+            // ✅ แสดงออเดอร์ที่ลูกค้าขอยกเลิก รอร้านอนุมัติ
+            if (cancelRequestStatus == 'pending') {
+              return true;
+            }
 
             final isPickup = location == 'รับอาหารที่ร้าน';
 
@@ -69,14 +89,16 @@ class PendingStorePage extends StatelessWidget {
             if (aTime is Timestamp && bTime is Timestamp) {
               return bTime.compareTo(aTime);
             }
+
             return 0;
           });
 
           if (docs.isEmpty) {
             return const _EmptyState(
               icon: Icons.receipt_long,
-              title: 'ยังไม่มีออเดอร์รอดำเนินการ',
-              subtitle: 'เมื่อมีออเดอร์ใหม่ รายการจะแสดงที่นี่',
+              title: 'ยังไม่มีออเดอร์',
+              subtitle:
+                  'ออเดอร์รอดำเนินการ หรือออเดอร์ที่ถูกยกเลิกจะแสดงที่นี่',
               color: Colors.orange,
             );
           }
@@ -94,6 +116,9 @@ class PendingStorePage extends StatelessWidget {
                 status: (data['status'] ?? 'pending').toString(),
                 riderStatus: (data['riderStatus'] ?? 'pending').toString(),
                 payment: (data['payment'] ?? 'pending').toString(),
+                cancelRequestStatus:
+                    (data['cancelRequestStatus'] ?? '').toString(),
+                cancelReason: (data['cancelReason'] ?? '').toString(),
                 createdText: _formatTime(data['createdAt']),
                 fullName: (data['fullname'] ?? 'ไม่ระบุ').toString(),
                 phone: (data['phone'] ?? '-').toString(),
@@ -115,6 +140,7 @@ class PendingStorePage extends StatelessWidget {
       return '${d.day}/${d.month}/${d.year} '
           '${d.hour}:${d.minute.toString().padLeft(2, '0')}';
     }
+
     return '-';
   }
 }
@@ -125,6 +151,8 @@ class _OrderCard extends StatefulWidget {
     required this.status,
     required this.riderStatus,
     required this.payment,
+    required this.cancelRequestStatus,
+    required this.cancelReason,
     required this.createdText,
     required this.fullName,
     required this.phone,
@@ -138,6 +166,8 @@ class _OrderCard extends StatefulWidget {
   final String status;
   final String riderStatus;
   final String payment;
+  final String cancelRequestStatus;
+  final String cancelReason;
   final String createdText;
   final String fullName;
   final String phone;
@@ -154,10 +184,18 @@ class _OrderCardState extends State<_OrderCard> {
   late String _status;
   late String _riderStatus;
   late String _payment;
+  late String _cancelRequestStatus;
 
-  bool _deleting = false;
+  bool _cancelling = false;
+  bool _approvingCancel = false;
+  bool _rejectingCancel = false;
 
   bool get _isPickup => widget.locationText.trim() == 'รับอาหารที่ร้าน';
+
+  bool get _isCancelled =>
+      _status == 'cancelled' || _status == 'canceled' || _status == 'cancel';
+
+  bool get _hasCancelRequest => _cancelRequestStatus == 'pending';
 
   @override
   void initState() {
@@ -165,78 +203,267 @@ class _OrderCardState extends State<_OrderCard> {
     _status = widget.status.toLowerCase();
     _riderStatus = widget.riderStatus.toLowerCase();
     _payment = widget.payment.toLowerCase();
+    _cancelRequestStatus = widget.cancelRequestStatus.toLowerCase();
   }
 
   Future<void> _updateStatus(String value) async {
+    if (_isCancelled) {
+      _showSnack(
+        'ออเดอร์นี้ถูกยกเลิกแล้ว ไม่สามารถแก้ไขสถานะได้',
+        Colors.red,
+      );
+      return;
+    }
+
     try {
       setState(() => _status = value);
 
       await FirebaseFirestore.instance
           .collection('orders')
           .doc(widget.orderId)
-          .update({'status': value});
+          .update({
+        'status': value,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('แก้ไขสถานะออเดอร์ไม่สำเร็จ: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showSnack('แก้ไขสถานะออเดอร์ไม่สำเร็จ: $e', Colors.red);
     }
   }
 
   Future<void> _updatePayment(String value) async {
+    if (_isCancelled) {
+      _showSnack(
+        'ออเดอร์นี้ถูกยกเลิกแล้ว ไม่สามารถแก้ไขการชำระเงินได้',
+        Colors.red,
+      );
+      return;
+    }
+
     try {
       setState(() => _payment = value);
 
       await FirebaseFirestore.instance
           .collection('orders')
           .doc(widget.orderId)
-          .update({'payment': value});
+          .update({
+        'payment': value,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('แก้ไขสถานะการชำระเงินไม่สำเร็จ: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showSnack('แก้ไขสถานะการชำระเงินไม่สำเร็จ: $e', Colors.red);
     }
   }
 
-  Future<void> _deleteOrder() async {
-    if (!_isPickup && _riderStatus == 'success') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('ไม่สามารถยกเลิกได้ ไรเดอร์รับงานแล้ว'),
-          backgroundColor: Colors.red,
-        ),
+  Future<void> _approveCancelRequest() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          title: const Text(
+            'อนุมัติการยกเลิก?',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          content: const Text(
+            'หากอนุมัติ ออเดอร์นี้จะถูกยกเลิก และให้ลูกค้าติดต่อกลับทางร้าน',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('ไม่'),
+            ),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              icon: const Icon(Icons.check_circle),
+              label: const Text('อนุมัติยกเลิก'),
+              onPressed: () => Navigator.pop(dialogContext, true),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _approvingCancel = true);
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('orders')
+          .doc(widget.orderId)
+          .update({
+        'status': 'cancelled',
+        'orderCancelStatus': 'cancelled',
+        'cancelRequestStatus': 'approved',
+        'cancelApprovedBy': 'store',
+        'cancelApprovedAt': FieldValue.serverTimestamp(),
+        'refundStatus': 'contact_store',
+        'refundPolicy': 'กรุณาติดต่อกลับทางร้าน',
+        'cancelNote': 'ร้านค้าอนุมัติคำขอยกเลิกจากลูกค้า',
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (!mounted) return;
+
+      setState(() {
+        _status = 'cancelled';
+        _cancelRequestStatus = 'approved';
+        _approvingCancel = false;
+      });
+
+      _showSnack(
+        'อนุมัติยกเลิกออเดอร์แล้ว กรุณาติดต่อกลับทางร้าน',
+        Colors.red,
       );
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() => _approvingCancel = false);
+      _showSnack('อนุมัติยกเลิกไม่สำเร็จ: $e', Colors.red);
+    }
+  }
+
+  Future<void> _rejectCancelRequest() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          title: const Text(
+            'ไม่อนุมัติการยกเลิก?',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          content: const Text('ลูกค้าจะเห็นสถานะว่า ร้านไม่อนุมัติยกเลิก'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('ยกเลิก'),
+            ),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blueGrey,
+                foregroundColor: Colors.white,
+              ),
+              icon: const Icon(Icons.close),
+              label: const Text('ไม่อนุมัติ'),
+              onPressed: () => Navigator.pop(dialogContext, true),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _rejectingCancel = true);
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('orders')
+          .doc(widget.orderId)
+          .update({
+        'cancelRequestStatus': 'rejected',
+        'cancelRejectedBy': 'store',
+        'cancelRejectedAt': FieldValue.serverTimestamp(),
+        'cancelRejectNote': 'ร้านค้าไม่อนุมัติคำขอยกเลิก',
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (!mounted) return;
+
+      setState(() {
+        _cancelRequestStatus = 'rejected';
+        _rejectingCancel = false;
+      });
+
+      _showSnack('ไม่อนุมัติคำขอยกเลิกแล้ว', Colors.blueGrey);
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() => _rejectingCancel = false);
+      _showSnack('ไม่อนุมัติไม่สำเร็จ: $e', Colors.red);
+    }
+  }
+
+  Future<void> _cancelOrderByStore() async {
+    if (_isCancelled) {
+      _showSnack('ออเดอร์นี้ถูกยกเลิกไปแล้ว', Colors.red);
+      return;
+    }
+
+    if (!_isPickup && _riderStatus == 'success') {
+      _showSnack('ไม่สามารถยกเลิกได้ ไรเดอร์รับงานแล้ว', Colors.red);
       return;
     }
 
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(18),
         ),
-        title: const Text('ยืนยันการยกเลิก'),
-        content: const Text('ต้องการลบออเดอร์นี้ใช่หรือไม่?'),
+        title: const Text(
+          'ยืนยันการยกเลิกออเดอร์',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Order: ${widget.orderId}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.red.shade100),
+              ),
+              child: const Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.warning_amber, color: Colors.red),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'หากยกเลิกออเดอร์แล้ว กรุณาติดต่อกลับทางร้าน',
+                      style: TextStyle(
+                        color: Colors.red,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('ไม่'),
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('ไม่ยกเลิก'),
           ),
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
             ),
-            onPressed: () => Navigator.pop(context, true),
-            icon: const Icon(Icons.delete),
-            label: const Text('ยืนยัน'),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            icon: const Icon(Icons.cancel),
+            label: const Text('ยืนยันยกเลิก'),
           ),
         ],
       ),
@@ -244,50 +471,89 @@ class _OrderCardState extends State<_OrderCard> {
 
     if (confirm != true) return;
 
-    setState(() => _deleting = true);
+    setState(() => _cancelling = true);
 
     try {
-      final orderRef =
-          FirebaseFirestore.instance.collection('orders').doc(widget.orderId);
+      await FirebaseFirestore.instance
+          .collection('orders')
+          .doc(widget.orderId)
+          .update({
+        'status': 'cancelled',
+        'orderCancelStatus': 'cancelled',
+        'cancelledBy': 'store',
+        'cancelledAt': FieldValue.serverTimestamp(),
+        'refundStatus': 'contact_store',
+        'refundPolicy': 'กรุณาติดต่อกลับทางร้าน',
+        'cancelNote': 'ร้านค้ายกเลิกออเดอร์',
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
 
-      final items = await orderRef.collection('items').get();
+      if (!mounted) return;
 
-      for (final doc in items.docs) {
-        await doc.reference.delete();
-      }
+      setState(() {
+        _status = 'cancelled';
+        _cancelling = false;
+      });
 
-      await orderRef.delete();
+      _showSnack(
+        'ยกเลิกออเดอร์แล้ว กรุณาติดต่อกลับทางร้าน',
+        Colors.red,
+      );
     } catch (e) {
       if (!mounted) return;
 
-      setState(() => _deleting = false);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('ลบออเดอร์ไม่สำเร็จ: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      setState(() => _cancelling = false);
+      _showSnack('ยกเลิกออเดอร์ไม่สำเร็จ: $e', Colors.red);
     }
   }
 
-  String _statusLabel(String value) =>
-      value == 'success' ? 'จัดส่งสำเร็จ' : 'รอดำเนินการ';
+  void _showSnack(String text, Color color) {
+    if (!mounted) return;
 
-  String _paymentLabel(String value) =>
-      value == 'success' ? 'ชำระเงินแล้ว' : 'รอชำระเงิน';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(text),
+        backgroundColor: color,
+      ),
+    );
+  }
 
-  String _riderLabel(String value) =>
-      value == 'success' ? 'ไรเดอร์รับงานแล้ว' : 'กำลังหาไรเดอร์';
+  String _statusLabel(String value) {
+    if (value == 'success') return 'จัดส่งสำเร็จ';
+    if (value == 'cancelled' || value == 'canceled' || value == 'cancel') {
+      return 'ยกเลิกแล้ว';
+    }
 
-  Color _statusColor(String value) =>
-      value == 'success' ? Colors.green : Colors.orange;
+    return 'รอดำเนินการ';
+  }
 
-  Color _paymentColor(String value) =>
-      value == 'success' ? Colors.green : Colors.orange;
+  String _paymentLabel(String value) {
+    if (value == 'success') return 'ชำระเงินแล้ว';
+    return 'รอชำระเงิน';
+  }
 
-  Color _riderColor(String value) =>
-      value == 'success' ? Colors.green : Colors.orange;
+  String _riderLabel(String value) {
+    if (value == 'success') return 'ไรเดอร์รับงานแล้ว';
+    return 'กำลังหาไรเดอร์';
+  }
+
+  Color _statusColor(String value) {
+    if (value == 'success') return Colors.green;
+
+    if (value == 'cancelled' || value == 'canceled' || value == 'cancel') {
+      return Colors.red;
+    }
+
+    return Colors.orange;
+  }
+
+  Color _paymentColor(String value) {
+    return value == 'success' ? Colors.green : Colors.orange;
+  }
+
+  Color _riderColor(String value) {
+    return value == 'success' ? Colors.green : Colors.orange;
+  }
 
   void _showImage(String url) {
     showDialog(
@@ -331,14 +597,14 @@ class _OrderCardState extends State<_OrderCard> {
           childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
           leading: CircleAvatar(
             backgroundColor: statusColor.withOpacity(0.12),
-            child: Icon(Icons.receipt_long, color: statusColor),
+            child: Icon(
+              _isCancelled ? Icons.cancel : Icons.receipt_long,
+              color: statusColor,
+            ),
           ),
           title: const Text(
             'ออเดอร์',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            ),
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
           ),
           subtitle: Padding(
             padding: const EdgeInsets.only(top: 6),
@@ -387,6 +653,16 @@ class _OrderCardState extends State<_OrderCard> {
                         label: 'รับเองที่ร้าน',
                         color: Colors.blue,
                       ),
+                    if (_hasCancelRequest)
+                      const _StatusChip(
+                        label: 'ลูกค้าขอยกเลิก',
+                        color: Colors.red,
+                      ),
+                    if (_isCancelled)
+                      const _StatusChip(
+                        label: 'กรุณาติดต่อกลับทางร้าน',
+                        color: Colors.red,
+                      ),
                   ],
                 ),
               ],
@@ -425,75 +701,32 @@ class _OrderCardState extends State<_OrderCard> {
               ),
             ),
 
-            _SectionCard(
-              title: 'แก้ไขสถานะ',
-              icon: Icons.tune,
-              color: Colors.orange,
-              child: Column(
-                children: [
-                  _DropdownBox(
-                    title: 'สถานะออเดอร์',
-                    icon: Icons.assignment_turned_in,
-                    value: _status,
-                    color: _statusColor(_status),
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'pending',
-                        child: Text('รอดำเนินการ'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'success',
-                        child: Text('จัดส่งสำเร็จ'),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      if (value != null) _updateStatus(value);
-                    },
-                  ),
-                  const SizedBox(height: 10),
-                  _DropdownBox(
-                    title: 'สถานะการชำระเงิน',
-                    icon: Icons.payments,
-                    value: _payment,
-                    color: _paymentColor(_payment),
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'pending',
-                        child: Text('รอชำระเงิน'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'success',
-                        child: Text('ชำระเงินแล้ว'),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      if (value != null) _updatePayment(value);
-                    },
-                  ),
-                  if (!_isPickup) ...[
-                    const SizedBox(height: 10),
+            if (_hasCancelRequest)
+              _SectionCard(
+                title: 'คำขอยกเลิกจากลูกค้า',
+                icon: Icons.cancel_schedule_send,
+                color: Colors.red,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: _riderColor(_riderStatus).withOpacity(0.08),
+                        color: Colors.red.shade50,
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: _riderColor(_riderStatus).withOpacity(0.2),
-                        ),
+                        border: Border.all(color: Colors.red.shade100),
                       ),
-                      child: Row(
+                      child: const Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(
-                            Icons.delivery_dining,
-                            color: _riderColor(_riderStatus),
-                          ),
-                          const SizedBox(width: 8),
+                          Icon(Icons.warning_amber, color: Colors.red),
+                          SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              'สถานะไรเดอร์: ${_riderLabel(_riderStatus)}',
+                              'ลูกค้าขอยกเลิกออเดอร์นี้ หากอนุมัติให้ลูกค้าติดต่อกลับทางร้าน',
                               style: TextStyle(
-                                color: _riderColor(_riderStatus),
+                                color: Colors.red,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -501,10 +734,206 @@ class _OrderCardState extends State<_OrderCard> {
                         ],
                       ),
                     ),
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.edit_note, color: Colors.orange),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              widget.cancelReason.trim().isEmpty
+                                  ? 'ลูกค้าไม่ได้ระบุเหตุผล'
+                                  : 'เหตุผล: ${widget.cancelReason}',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.blueGrey,
+                              side: const BorderSide(color: Colors.blueGrey),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            icon: _rejectingCancel
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.close),
+                            label: const Text('ไม่อนุมัติ'),
+                            onPressed: _rejectingCancel || _approvingCancel
+                                ? null
+                                : _rejectCancelRequest,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            icon: _approvingCancel
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.check_circle),
+                            label: const Text('อนุมัติ'),
+                            onPressed: _rejectingCancel || _approvingCancel
+                                ? null
+                                : _approveCancelRequest,
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
-                ],
+                ),
               ),
-            ),
+
+            if (_isCancelled)
+              _SectionCard(
+                title: 'สถานะการยกเลิก',
+                icon: Icons.contact_support,
+                color: Colors.red,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.red.shade100),
+                  ),
+                  child: const Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.red),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'ออเดอร์นี้ถูกยกเลิกแล้ว กรุณาติดต่อกลับทางร้าน',
+                          style: TextStyle(
+                            color: Colors.red,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            if (!_isCancelled)
+              _SectionCard(
+                title: 'แก้ไขสถานะ',
+                icon: Icons.tune,
+                color: Colors.orange,
+                child: Column(
+                  children: [
+                    _DropdownBox(
+                      title: 'สถานะออเดอร์',
+                      icon: Icons.assignment_turned_in,
+                      value: _status,
+                      color: _statusColor(_status),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'pending',
+                          child: Text('รอดำเนินการ'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'success',
+                          child: Text('จัดส่งสำเร็จ'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value != null) _updateStatus(value);
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    _DropdownBox(
+                      title: 'สถานะการชำระเงิน',
+                      icon: Icons.payments,
+                      value: _payment,
+                      color: _paymentColor(_payment),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'pending',
+                          child: Text('รอชำระเงิน'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'success',
+                          child: Text('ชำระเงินแล้ว'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value != null) _updatePayment(value);
+                      },
+                    ),
+                    if (!_isPickup) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: _riderColor(_riderStatus).withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: _riderColor(_riderStatus).withOpacity(0.2),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.delivery_dining,
+                              color: _riderColor(_riderStatus),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'สถานะไรเดอร์: ${_riderLabel(_riderStatus)}',
+                                style: TextStyle(
+                                  color: _riderColor(_riderStatus),
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
 
             if (widget.slipUrl.isNotEmpty)
               _SectionCard(
@@ -539,34 +968,38 @@ class _OrderCardState extends State<_OrderCard> {
 
             const SizedBox(height: 10),
 
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton.icon(
-                onPressed: (!_isPickup && _riderStatus == 'success') || _deleting
-                    ? null
-                    : _deleteOrder,
-                icon: _deleting
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2.2,
-                        ),
-                      )
-                    : const Icon(Icons.delete),
-                label: Text(_deleting ? 'กำลังยกเลิก...' : 'ยกเลิกออเดอร์'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  foregroundColor: Colors.white,
-                  disabledBackgroundColor: Colors.grey.shade300,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
+            if (!_isCancelled && !_hasCancelRequest)
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton.icon(
+                  onPressed:
+                      (!_isPickup && _riderStatus == 'success') || _cancelling
+                          ? null
+                          : _cancelOrderByStore,
+                  icon: _cancelling
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2.2,
+                          ),
+                        )
+                      : const Icon(Icons.cancel),
+                  label: Text(
+                    _cancelling ? 'กำลังยกเลิก...' : 'ยกเลิกออเดอร์',
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: Colors.grey.shade300,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
                   ),
                 ),
               ),
-            ),
           ],
         ),
       ),
@@ -808,9 +1241,9 @@ class _OrderItemsList extends StatelessWidget {
                               height: 52,
                               fit: BoxFit.cover,
                               errorBuilder: (_, __, ___) =>
-                                  _ProductPlaceholder(),
+                                  const _ProductPlaceholder(),
                             )
-                          : _ProductPlaceholder(),
+                          : const _ProductPlaceholder(),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -821,8 +1254,9 @@ class _OrderItemsList extends StatelessWidget {
                             name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style:
-                                const TextStyle(fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                           const SizedBox(height: 3),
                           Text(
@@ -854,6 +1288,8 @@ class _OrderItemsList extends StatelessWidget {
 }
 
 class _ProductPlaceholder extends StatelessWidget {
+  const _ProductPlaceholder();
+
   @override
   Widget build(BuildContext context) {
     return Container(
